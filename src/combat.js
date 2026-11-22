@@ -52,7 +52,7 @@ function groupLabel(g) { const n = liveUnits(g).length; return n > 1 ? `${g.mon.
 // 戦闘本体。result: 'win' | 'fled' | 'wipe' を B.result に入れる
 export function* battle(game, groups, opts = {}) {
   const party = game.party;
-  const B = { groups, round: 0, partyAC: 0, result: null, exp: 0, gold: 0, boss: !!opts.boss, lair: !!opts.lair };
+  const B = { groups, round: 0, partyAC: 0, result: null, exp: 0, gold: 0, boss: !!opts.boss, lair: !!opts.lair, noRun: !!opts.noRun || !!opts.boss };
   game.battle = B;
   for (const c of party) { c._silenced = false; c._acBuff = 0; }
   game.log(groups.map(groupLabel).join('、') + ' が現れた！', 'enc');
@@ -184,7 +184,7 @@ function* partyAction(game, B, c, act) {
       yield 1; return;
     }
     case 'run': {
-      if (B.boss) { game.log('逃げられない！'); yield 1; return; }
+      if (B.noRun) { game.log('逃げられない！'); yield 1; return; }
       const avgAgi = party.filter(canAct).reduce((s, x) => s + x.stats.agi, 0) / Math.max(1, partyAble(party).length);
       if (R.chance(0.45 + (avgAgi - 10) * 0.03)) { game.log('一行は逃げ出した！'); B.result = 'fled'; }
       else game.log('逃げ出そうとしたが、回り込まれた！');

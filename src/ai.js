@@ -55,7 +55,7 @@ function damageSpells(c, kinds) {
 export function chooseActions(game, B) {
   const party = game.party;
   const P = policy(game);
-  const useMult = (SPELL_USE[game.settings.spellUse] || SPELL_USE.normal).mult;
+  const useMult = B.noRun ? SPELL_USE.full.mult : (SPELL_USE[game.settings.spellUse] || SPELL_USE.normal).mult;
   const dg = danger(game, B);
   const acts = new Map();
   const groups = B.groups.filter(g => liveUnits(g).length);
@@ -64,7 +64,7 @@ export function chooseActions(game, B) {
 
   // 逃走判断
   const tired = game.mode === 'return' ? 0.7 : 1;
-  if (!B.boss && ((dg > P.runDanger * tired && avgHp < 0.5) || (dg > 0.8 && avgHp < 0.3))) {
+  if (!B.noRun && ((dg > P.runDanger * tired && avgHp < 0.5) || (dg > 0.8 && avgHp < 0.3))) {
     const runner = party.find(canAct);
     if (runner) { acts.set(runner, { type: 'run' }); return acts; }
   }

@@ -50,4 +50,5 @@
 ```bash
 node tools/sim.mjs <seed> <最大手数>   # ヘッドレスでAIに攻略させる
 node tools/diag.mjs <seed> <最大手数>  # 階ごとの全滅数・撤退理由など
+node tools/lairloop.mjs <seed> <最大手数>  # 玄室からの逃走の繰り返しと帰還中の全滅
 ```

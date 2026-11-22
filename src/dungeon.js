@@ -149,8 +149,16 @@ function generateFloor(worldSeed, floor) {
 
   // 5. 玄室（固定の敵と宝箱）
   F.lairs = [];
+  // 扉に面していない区画を選ぶ（部屋の中で迂回できるように）。乱数の消費回数は変えない
+  const doorCount = (x, y) => [0, 1, 2, 3].filter(d => F.wall(x, y, d) === DOOR || (F.wall(x, y, d) === OPEN && F.inside(x + DX[d], y + DY[d]) && F.cell(x + DX[d], y + DY[d]).room !== F.cell(x, y).room)).length;
   rooms.forEach((r, i) => {
-    const cx = r.x + rng.int(r.w), cy = r.y + rng.int(r.h);
+    let cx = r.x + rng.int(r.w), cy = r.y + rng.int(r.h);
+    let best = [cx, cy], bestScore = doorCount(cx, cy) * 10 + (F.cell(cx, cy).type ? 100 : 0);
+    for (let yy = r.y; yy < r.y + r.h; yy++) for (let xx = r.x; xx < r.x + r.w; xx++) {
+      const sc = doorCount(xx, yy) * 10 + (F.cell(xx, yy).type ? 100 : 0) + (Math.abs(xx - cx) + Math.abs(yy - cy)) * 0.1;
+      if (sc < bestScore) { bestScore = sc; best = [xx, yy]; }
+    }
+    [cx, cy] = best;
     const c = F.cell(cx, cy);
     if (c.type) return;
     c.type = 'lair'; c.lairId = i;

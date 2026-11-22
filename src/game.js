@@ -29,7 +29,7 @@ export class Game {
     this.party = []; this.reserve = [];
     this.gold = 0; this.bag = []; this.stock = {};
     this.location = 'town'; this.floor = 0; this.x = 0; this.y = H - 1; this.dir = 0;
-    this.known = {}; this.lairsCleared = []; this.deepest = 1;
+    this.known = {}; this.lairsCleared = []; this.lairsFled = []; this.deepest = 1;
     this.mode = 'explore';
     this.cleared = false;
     this.settings = { ...DEFAULT_SETTINGS };
@@ -75,7 +75,7 @@ export class Game {
     for (const [f, arr] of Object.entries(this.known)) known[f] = Array.from(arr).join('');
     return JSON.stringify({
       v: 1, seed: this.seed, party: this.party, reserve: this.reserve, gold: this.gold, bag: this.bag, stock: this.stock,
-      location: this.location, floor: this.floor, x: this.x, y: this.y, dir: this.dir, known, lairsCleared: this.lairsCleared,
+      location: this.location, floor: this.floor, x: this.x, y: this.y, dir: this.dir, known, lairsCleared: this.lairsCleared, lairsFled: this.lairsFled,
       deepest: this.deepest, mode: this.mode, cleared: this.cleared, settings: this.settings, stats: this.stats,
       logs: this.logs.slice(-60), nextId: getNextId(), rng: R.s,
     });
@@ -85,7 +85,7 @@ export class Game {
     const g = new Game();
     Object.assign(g, {
       seed: d.seed, party: d.party, reserve: d.reserve || [], gold: d.gold, bag: d.bag, stock: d.stock || {},
-      location: d.location, floor: d.floor, x: d.x, y: d.y, dir: d.dir, lairsCleared: d.lairsCleared || [],
+      location: d.location, floor: d.floor, x: d.x, y: d.y, dir: d.dir, lairsCleared: d.lairsCleared || [], lairsFled: d.lairsFled || [],
       deepest: d.deepest || 1, mode: d.mode || 'explore', cleared: !!d.cleared,
       settings: { ...DEFAULT_SETTINGS, ...d.settings }, stats: { ...g.stats, ...d.stats }, logs: d.logs || [],
     });
@@ -124,7 +124,7 @@ export class Game {
     this.stats.trips++;
     this.location = 'dungeon'; this.floor = 1;
     this.x = getFloor(this.seed, 1).up.x; this.y = getFloor(this.seed, 1).up.y; this.dir = 0;
-    this.mode = 'explore'; this.lairsCleared = [];
+    this.mode = 'explore'; this.lairsCleared = []; this.lairsFled = [];
     this.knownMap()[this.y * W + this.x] = 1;
     yield 2;
   }
@@ -416,9 +416,13 @@ export class Game {
       if (label === 'up' && here.type === 'up') { yield* this.climb(-1); continue; }
       if (label === 'down' && here.type === 'down') { yield* this.climb(1); continue; }
 
+      // 避けたいマス（他に道がなければ通る）。
+      // 帰還中・弱っているとき・一度逃げ出した玄室は、未制圧なら避ける
+      const weak = this.mode === 'return' || cond.hp < 0.7;
       const avoid = (x, y) => {
         const c = F.cell(x, y);
         if (!known[y * W + x]) return false;
+        if (c.type === 'lair' && !this.lairsCleared.includes(c.lairId) && (weak || this.lairsFled.includes(c.lairId))) return true;
         return c.type === 'pit' || c.type === 'teleport' || c.type === 'alarm' || (avoidBoss && c.type === 'boss' && !this.cleared);
       };
       let path = findPath(F, known, this.x, this.y, goal, avoid);
@@ -432,6 +436,15 @@ export class Game {
       }
       stuck = 0;
       const d = path[0];
+      // 避けられない玄室に弱った状態で入る前に、できるだけ回復しておく
+      {
+        const nc = F.cell(this.x + DX[d], this.y + DY[d]);
+        if (nc.type === 'lair' && !this.lairsCleared.includes(nc.lairId) && label !== 'lair' && partyCondition(this).hp < 0.8 && sinceCamp > 0) {
+          const did = yield* this.camp();
+          sinceCamp = 0;
+          if (did) continue;
+        }
+      }
       // 向きを変える
       if (d !== this.dir) {
         this.dir = d;
@@ -466,10 +479,16 @@ export class Game {
         yield 1;
         res = yield* battle(this, makeEncounter(this.floor));
       } else if (cell.type === 'lair' && !this.lairsCleared.includes(cell.lairId)) {
-        this.log('玄室に入った。', 'sys');
+        // 一度逃げた玄室に再び入るのは避けられない場合だけ。今度は退かずに全力で戦う
+        const forced = this.lairsFled.includes(cell.lairId);
+        this.log(forced ? '避けられない玄室だ。覚悟を決めて踏み込んだ。' : '玄室に入った。', 'sys');
         yield 1;
-        res = yield* battle(this, makeEncounter(this.floor, { lair: true }), { lair: true });
+        res = yield* battle(this, makeEncounter(this.floor, { lair: true }), { lair: true, noRun: forced });
         if (res.result === 'win') this.lairsCleared.push(cell.lairId);
+        if (res.result === 'fled' && !this.lairsFled.includes(cell.lairId)) {
+          this.lairsFled.push(cell.lairId);
+          this.log('この玄室は避けて進もう。', 'sys');
+        }
       } else if (cell.type === 'boss' && !this.cleared) {
         this.log('禍々しい気配が満ちている…。', 'bad');
         yield 2;
@@ -514,7 +533,7 @@ export class Game {
       return { goal: unexplored, label: 'explore', avoidBoss: !bossReady };
     }
     // 探索済み：玄室を回る or うろつく
-    const lair = F.lairs.filter(l => !this.lairsCleared.includes(l.id) && isKnown(l.x, l.y));
+    const lair = F.lairs.filter(l => !this.lairsCleared.includes(l.id) && !this.lairsFled.includes(l.id) && isKnown(l.x, l.y));
     if (lair.length) return { goal: (x, y) => lair.some(l => l.x === x && l.y === y), label: 'lair', avoidBoss: true };
     if (!this.lastWander || (this.lastWander.x === this.x && this.lastWander.y === this.y)) {
       // 地上へ戻ってレベルアップが必要か
@@ -542,6 +561,7 @@ export class Game {
       else this.log(`階段を下りた。地下${this.floor}階。`, 'sys');
     }
     this.lairsCleared = [];
+    this.lairsFled = [];
     this.lastWander = null;
     this.knownMap()[this.y * W + this.x] = 1;
     if (this.mode !== 'return') this.mode = 'explore';
