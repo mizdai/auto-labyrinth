@@ -40,9 +40,9 @@
 ## モンスター画像
 
 - 元画像: `assets/src/monsters-sheet.png`（9列×5行、マゼンタ背景。並びは `src/monsters.js` の定義順）
-- 切り出し済み: `assets/monsters/<id>.png`（88×88、余白込み、32色、背景透過）
+- 切り出し済み: `assets/monsters/<id>.png`（96×96の等倍ドット、余白込み、背景透過）
 - 戦闘では先頭グループの絵だけを、敵の数に関係なく一定の整数倍率で表示する（他のグループは名前と数の一覧）。確認用ページ: `tools/battle-preview.html`
-- 作り直し: `python3 tools/slice_monsters.py assets/src/monsters-sheet.png assets/monsters "<id を定義順に空白区切り>"`
+- 作り直し: `python3 tools/slice_monsters.py assets/src/monsters-sheet.png assets/monsters "<id を定義順に空白区切り>" --native`
 - 制作指示書: `docs/monster-art.md`
 
 ## バランス検証

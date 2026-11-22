@@ -244,8 +244,8 @@ export function drawMonster(ctx, mon, cx, cy, scale, alpha = 1) {
   ctx.globalAlpha = 1;
 }
 
-// 魔物の画像（assets/monsters/<id>.png、全員同じ 88×88 のキャンバス）。読み込めなければ簡易ドット絵で代用
-const SPRITE_PX = 88;
+// 魔物の画像（assets/monsters/<id>.png、全員同じ 96×96 のキャンバス、等倍ドット）。読み込めなければ簡易ドット絵で代用
+const SPRITE_PX = 96;
 const spriteCache = new Map();
 function sprite(id) {
   if (!spriteCache.has(id)) {
@@ -277,8 +277,8 @@ export function preloadSprites(ids) { for (const id of ids) sprite(id); }
 // 戦闘画面（引き伸ばしのない実ピクセル座標 w×h で描く）
 // 絵は先頭グループの1枚だけを、画面の高さで決まる一定の整数倍率で描く（敵の数に関係なく同じ大きさ）。
 // 全グループは左上に名前と数の一覧で示す。
-// 88pxのキャンバス全体が表示枠の高さの約6割になる整数倍率
-export const BATTLE_CANVAS_RATIO = 0.62;
+// 96pxのキャンバス全体が表示枠の高さの約2/3になる整数倍率
+export const BATTLE_CANVAS_RATIO = 0.68;
 export function battleScale(h) { return Math.max(1, Math.floor(h * BATTLE_CANVAS_RATIO / SPRITE_PX)); }
 export function drawBattle(ctx, game, w, h) {
   const B = game.battle;
