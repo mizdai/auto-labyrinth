@@ -384,8 +384,12 @@ export class Game {
       // 野営で回復
       sinceCamp++;
       const cond = partyCondition(this);
-      if (sinceCamp > 3 && (cond.hp < 0.75 || this.party.some(c => c.poison || c.status === 'paralyzed' || c.status === 'dead'))) {
-        const did = yield* this.camp();
+      // HPバーが赤い（3割未満）仲間がいれば、間隔を空けずにすぐ手当てする
+      const someoneRed = this.party.some(c => isAlive(c) && c.status !== 'stoned' && c.hp < c.maxhp * 0.3);
+      const usualCamp = sinceCamp > 3 && (cond.hp < 0.75 || this.party.some(c => c.poison || c.status === 'paralyzed' || c.status === 'dead'));
+      if ((someoneRed && sinceCamp > 0) || usualCamp) {
+        // 赤い仲間の応急手当だけなら、呪文を温存するためHP5割までにとどめる
+        const did = yield* this.camp(usualCamp ? 0.8 : 0.5);
         sinceCamp = 0;
         if (did) continue;
       }
@@ -568,10 +572,10 @@ export class Game {
     yield 2;
   }
 
-  *camp() {
+  *camp(hurtBelow = 0.8) {
     let did = false;
     for (let k = 0; k < 10; k++) {
-      const plan = campPlan(this);
+      const plan = campPlan(this, hurtBelow);
       if (!plan) break;
       if (!did) { this.log('一行は野営して傷を手当てした。'); did = true; }
       const [caster, sp, t] = plan;

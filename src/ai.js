@@ -184,7 +184,8 @@ export function shouldReturn(game) {
 import { expNext as nextExp } from './character.js';
 
 // 野営での回復計画：[caster, spell, target] を返す
-export function campPlan(game) {
+// hurtBelow: この割合未満のHPの仲間を回復対象にする
+export function campPlan(game, hurtBelow = 0.8) {
   const party = game.party;
   // 蘇生
   for (const t of party) {
@@ -200,7 +201,7 @@ export function campPlan(game) {
     }
   }
   // 回復：最も減っている味方
-  const hurt = party.filter(t => isAlive(t) && t.status !== 'stoned' && t.hp < t.maxhp * 0.8).sort((a, b) => a.hp / a.maxhp - b.hp / b.maxhp)[0];
+  const hurt = party.filter(t => isAlive(t) && t.status !== 'stoned' && t.hp < t.maxhp * hurtBelow).sort((a, b) => a.hp / a.maxhp - b.hp / b.maxhp)[0];
   if (hurt) {
     let best = null, bestScore = 0;
     for (const c of party) {
