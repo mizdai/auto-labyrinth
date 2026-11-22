@@ -250,7 +250,7 @@ function sprite(id) {
   if (!spriteCache.has(id)) {
     const img = new Image();
     img.onerror = () => { img._failed = true; };
-    img.src = `assets/monsters/${id}.png`;
+    img.src = new URL(`../assets/monsters/${id}.png`, import.meta.url).href;
     spriteCache.set(id, img);
   }
   return spriteCache.get(id);
@@ -258,6 +258,8 @@ function sprite(id) {
 export function preloadSprites(ids) { for (const id of ids) sprite(id); }
 
 // 戦闘画面（引き伸ばしのない実ピクセル座標 w×h で描く）
+// 大きさはサイズ区分で決める。画面に収まらないときは全員を同じ比率で縮め、大小関係を保つ
+const SIZE_H = { S: 0.3, M: 0.58, L: 0.82, XL: 1.0 };
 export function drawBattle(ctx, game, w, h) {
   const B = game.battle;
   ctx.fillStyle = 'rgba(0,0,0,0.72)';
@@ -265,18 +267,30 @@ export function drawBattle(ctx, game, w, h) {
   const groups = B.groups.filter(g => g.units.some(u => u.hp > 0));
   const n = groups.length;
   const fontPx = Math.max(12, Math.round(w / 26));
-  groups.forEach((g, i) => {
-    const alive = g.units.filter(u => u.hp > 0).length;
-    const cx = w * (i + 0.5) / n;
-    const box = Math.min(h * 0.74, w * 0.96 / n);
-    const bottom = h * 0.8;
+  const bottom = h * 0.8, availH = h * 0.74, slotW = w / n;
+  const items = groups.map(g => {
     const img = sprite(g.mon.id);
-    if (img.complete && img.naturalWidth && !img._failed) {
+    const ok = img.complete && img.naturalWidth && !img._failed;
+    const sw = ok ? img.naturalWidth : 64, sh = ok ? img.naturalHeight : 64;
+    // 横長の魔物は幅も考慮して「見た目の大きさ」を測る
+    const apparent = Math.max(sh, sw * 0.7);
+    const scale = availH * (SIZE_H[g.mon.size] || SIZE_H.M) / apparent;
+    return { g, img, ok, sw, sh, scale };
+  });
+  let shrink = 1;
+  for (const it of items) shrink = Math.min(shrink, slotW * 0.94 / (it.sw * it.scale), availH / (it.sh * it.scale));
+  items.forEach((it, i) => {
+    const { g, img, ok, sw, sh } = it;
+    const sc = it.scale * shrink;
+    const dw = sw * sc, dh = sh * sc;
+    const cx = slotW * (i + 0.5);
+    if (ok) {
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, Math.round(cx - box / 2), Math.round(bottom - box), Math.round(box), Math.round(box));
+      ctx.drawImage(img, Math.round(cx - dw / 2), Math.round(bottom - dh), Math.round(dw), Math.round(dh));
     } else {
-      drawMonster(ctx, g.mon, cx, bottom - box / 2, box * 0.8);
+      drawMonster(ctx, g.mon, cx, bottom - dh / 2, dh);
     }
+    const alive = g.units.filter(u => u.hp > 0).length;
     ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
     ctx.font = `${fontPx}px sans-serif`;
     ctx.fillText(n >= 3 ? g.mon.name.replace(/ザル=ガドラ$/, '') : g.mon.name, cx, bottom + fontPx * 1.2);
