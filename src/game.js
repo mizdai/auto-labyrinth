@@ -37,6 +37,7 @@ export class Game {
     this.logs = [];
     this.onLog = null;
     this.battle = null;
+    this.chestView = null;
     this.townState = '';
     this.lastWander = null;
   }
@@ -612,10 +613,17 @@ export class Game {
     if (!quiet) this.log(msg, 'spell');
   }
 
+  // 宝箱。this.chestView に表示状態（閉/開）を持たせ、画面に宝箱の絵を出す
   *chest(guaranteed) {
+    this.chestView = { open: false };
+    try { yield* this.chestBody(guaranteed); }
+    finally { this.chestView = null; }
+  }
+
+  *chestBody(guaranteed) {
     const setting = this.settings.chest;
     this.log('宝箱がある。', 'sys');
-    yield 1;
+    yield 2;
     if (setting === 'never') { this.log('宝箱は開けずに立ち去った。'); yield 1; return; }
     const floor = this.floor;
     const traps = ['なし', '毒針', 'ボウガン', 'ガス', '爆弾', 'しびれ針', 'テレポーター', '術者殺し', '警報'];
@@ -624,34 +632,61 @@ export class Game {
     const trap = traps[ti];
     const thief = this.party.find(c => canAct(c) && (c.cls === 'thief' || c.cls === 'ninja'));
     const detector = this.party.find(c => canCast(c, SPELL_BY_ID.minuki));
+    const actor = thief || this.party.find(canAct);
+
+    // 1. 罠を調べる
     let guess = null;
     if (thief) {
+      this.log(`${thief.name}が罠を調べた。`);
+      yield 1;
       const p = Math.min(0.95, 0.6 + thief.level * 0.03 + (thief.stats.agi - 10) * 0.02);
       guess = R.chance(p) ? trap : R.pick(traps);
-      this.log(`${thief.name}が宝箱を調べた。罠は「${guess}」のようだ。`);
+      this.log(guess === 'なし' ? '罠はないようだ。' : `罠は「${guess}」のようだ。`);
+      yield 1;
     } else if (detector && (floor >= 2 || setting === 'always')) {
       detector.mp.priest[1]--;
+      this.log(`${detector.name}はミヌキを唱えた。`, 'spell');
+      yield 1;
       guess = R.chance(0.95) ? trap : R.pick(traps);
-      this.log(`${detector.name}はミヌキを唱えた。罠は「${guess}」だ。`, 'spell');
+      this.log(guess === 'なし' ? '罠はないようだ。' : `罠は「${guess}」だ。`);
+      yield 1;
     } else if (setting !== 'always' && floor > 2) {
       this.log('罠を調べる手段がない。宝箱は諦めた。'); yield 1; return;
     }
-    yield 1;
+
+    // 2. 罠を外す（罠がない見立てなら、そのまま開ける）
     let triggered = false;
-    if (trap !== 'なし') {
-      if (guess === 'なし' || guess === null) triggered = true;
-      else if (guess !== trap) triggered = R.chance(0.7);
-      else {
-        const p = thief ? Math.min(0.95, 0.55 + thief.level * 0.04 - floor * 0.03 + (thief.stats.agi - 10) * 0.02) * (thief.cls === 'ninja' ? 0.85 : 1) : 0.2;
-        if (R.chance(p)) { this.log(`罠「${trap}」を外した。`, 'good'); }
-        else if (R.chance(0.5)) { this.log('罠の解除に失敗した！'); triggered = true; }
-        else if (R.chance(p)) { this.log(`手間取ったが、罠「${trap}」を外した。`, 'good'); }
-        else { this.log('罠の解除に失敗した！'); triggered = true; }
-      }
+    if (guess === null || guess === 'なし') {
+      this.log(`${actor.name}は宝箱を開けた。`);
       yield 1;
+      triggered = trap !== 'なし';
+    } else {
+      const skill = thief
+        ? Math.min(0.95, 0.55 + thief.level * 0.04 - floor * 0.03 + (thief.stats.agi - 10) * 0.02) * (thief.cls === 'ninja' ? 0.85 : 1)
+        : 0.2;
+      let done = false;
+      for (let attempt = 0; attempt < 3 && !done && !triggered; attempt++) {
+        this.log(`${actor.name}が罠を外そうとした。`);
+        yield 1;
+        if (trap === 'なし') {                       // 見立て違いで、実は罠がなかった
+          this.log('……罠はなかったようだ。');
+          done = true;
+        } else if (guess === trap && R.chance(skill)) {
+          this.log(`${actor.name}は罠を外した！`, 'good');
+          done = true;
+        } else {
+          this.log('失敗した。');
+          yield 1;
+          if (R.chance(guess === trap ? 0.5 : 0.7)) triggered = true;
+        }
+      }
+      if (!done && !triggered) { this.log('罠を外せなかった。宝箱は諦めた。'); yield 1; return; }
+      if (done) { this.chestView.open = true; yield 2; }
     }
+
+    // 3. 罠が作動
     if (triggered) {
-      const opener = thief || this.party.find(canAct);
+      const opener = actor;
       this.log(`罠「${trap}」が作動した！`, 'bad');
       yield 1;
       const all = this.party.filter(isAlive);
@@ -668,7 +703,9 @@ export class Game {
       yield 1;
     }
     if (!this.party.some(canAct)) return;
-    // 中身
+
+    // 4. 中身
+    this.chestView.open = true;
     const gold = R.dice(floor * 2, 30) + (guaranteed ? floor * 50 : 0);
     this.gold += gold;
     this.stats.chests++;
@@ -679,7 +716,7 @@ export class Game {
       else msg += '荷物がいっぱいで持ちきれなかった。';
     }
     this.log(msg, 'good');
-    yield 1;
+    yield 2;
   }
 
   dropItem(floor) {

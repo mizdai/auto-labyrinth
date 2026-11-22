@@ -3,16 +3,17 @@
 <title>戦闘画面プレビュー</title>
 <style>body{background:#111;color:#ccc;font:13px sans-serif;margin:8px} canvas{width:100%;max-width:480px;display:block;margin:0 0 10px;border:1px solid #445}</style>
 </head><body>
-<p>モンスターの大きさ確認用（開発用ページ）</p>
+<p>モンスター・宝箱の表示確認用（開発用ページ）</p>
 <div id="out"></div>
 <script type="module">
-import { drawBattle, preloadSprites } from '../src/render.js';
+import { drawBattle, drawChest, preloadSprites, preloadChest } from '../src/render.js';
 import { MONSTERS } from '../src/monsters.js';
 const sets = [
   ['rat'], ['bat'], ['vampbat'], ['wisp'], ['kobold'], ['orc'], ['troll'], ['elderdragon'],
   ['rat', 'kobold', 'orc'], ['spider', 'werewolf', 'minotaur'], ['abysslord', 'greaterdemon', 'lich'], ['rat', 'bat', 'slime', 'kobold'],
 ];
 preloadSprites(Object.keys(MONSTERS));
+preloadChest();
 setTimeout(() => {
   for (const s of sets) {
     const c = document.createElement('canvas');
@@ -22,6 +23,15 @@ setTimeout(() => {
     const ctx = c.getContext('2d');
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, c.width, c.height);
     drawBattle(ctx, game, c.width, c.height);
+  }
+  // 宝箱（閉／開）
+  for (const open of [false, true]) {
+    const c = document.createElement('canvas');
+    c.width = 780; c.height = 608;
+    document.getElementById('out').appendChild(c);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, c.width, c.height);
+    drawChest(ctx, { chestView: { open } }, c.width, c.height);
   }
 }, 1500);
 </script>

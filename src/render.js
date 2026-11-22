@@ -338,3 +338,23 @@ export function drawBattle(ctx, game, w, h) {
     ctx.fillText(t, pad + fp * 0.6, pad + fp * (1.1 + i * 1.35));
   });
 }
+
+// 宝箱（魔物と同じ 96×96・同じ倍率で、足元の高さも揃える）
+const chestImgs = {};
+function chestImg(open) {
+  const k = open ? 'chest_open' : 'chest_closed';
+  if (!chestImgs[k]) { const img = new Image(); img.src = new URL(`../assets/objects/${k}.png`, import.meta.url).href; chestImgs[k] = img; }
+  return chestImgs[k];
+}
+export function preloadChest() { chestImg(false); chestImg(true); }
+export function drawChest(ctx, game, w, h) {
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, w, h);
+  const img = chestImg(game.chestView.open);
+  if (!img.complete || !img.naturalWidth) return;
+  const scale = battleScale(h);
+  const size = SPRITE_PX * scale;
+  const bottom = Math.round(h * 0.86);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, Math.round(w / 2 - size / 2), bottom - size, size, size);
+}

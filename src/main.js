@@ -1,7 +1,7 @@
 // 画面・入力・メインループ
 import { Game, SAVE_KEY, COMPOSITIONS } from './game.js';
 import { POLICIES, SPELL_USE, partyLevel, targetFloor } from './ai.js';
-import { drawView, drawMap, drawBattle, poseOf, preloadSprites } from './render.js';
+import { drawView, drawMap, drawBattle, drawChest, poseOf, preloadSprites, preloadChest } from './render.js';
 import { MONSTERS } from './monsters.js';
 import { CLASSES, RACES, ALIGN_NAMES, STAT_NAMES, STATS, STATUS_NAMES, SCHOOL_NAMES } from './data.js';
 import { ITEMS, SLOTS, SLOT_NAMES, itemName } from './items.js';
@@ -114,6 +114,7 @@ function render() {
   drawView(vctx, game, size, updateCam(performance.now()));
   vctx.restore();
   if (game.battle) drawBattle(vctx, game, w, h);
+  else if (game.chestView) drawChest(vctx, game, w, h);
 
   if (mapMode) {
     const mr = mapC.getBoundingClientRect();
@@ -261,5 +262,6 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) save(
 window.addEventListener('pagehide', save);
 
 preloadSprites(Object.keys(MONSTERS));
+preloadChest();
 boot();
 requestAnimationFrame(frame);
