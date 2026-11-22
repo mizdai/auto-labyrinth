@@ -37,6 +37,13 @@
 - `src/render.js` ワイヤーフレーム描画・ミニマップ・魔物のドット絵
 - `src/main.js` 画面とメインループ
 
+## モンスター画像
+
+- 元画像: `assets/src/monsters-sheet.png`（9列×5行、マゼンタ背景。並びは `src/monsters.js` の定義順）
+- 切り出し済み: `assets/monsters/<id>.png`（88×88、32色、背景透過）
+- 作り直し: `python3 tools/slice_monsters.py assets/src/monsters-sheet.png assets/monsters "<id を定義順に空白区切り>"`
+- 制作指示書: `docs/monster-art.md`
+
 ## バランス検証
 
 ```bash

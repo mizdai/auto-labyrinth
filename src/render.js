@@ -244,20 +244,42 @@ export function drawMonster(ctx, mon, cx, cy, scale, alpha = 1) {
   ctx.globalAlpha = 1;
 }
 
-export function drawBattle(ctx, game, size) {
+// 魔物の画像（assets/monsters/<id>.png）。読み込めなければ簡易ドット絵で代用
+const spriteCache = new Map();
+function sprite(id) {
+  if (!spriteCache.has(id)) {
+    const img = new Image();
+    img.onerror = () => { img._failed = true; };
+    img.src = `assets/monsters/${id}.png`;
+    spriteCache.set(id, img);
+  }
+  return spriteCache.get(id);
+}
+export function preloadSprites(ids) { for (const id of ids) sprite(id); }
+
+// 戦闘画面（引き伸ばしのない実ピクセル座標 w×h で描く）
+export function drawBattle(ctx, game, w, h) {
   const B = game.battle;
-  ctx.fillStyle = 'rgba(0,0,0,0.6)';
-  ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = 'rgba(0,0,0,0.72)';
+  ctx.fillRect(0, 0, w, h);
   const groups = B.groups.filter(g => g.units.some(u => u.hp > 0));
   const n = groups.length;
+  const fontPx = Math.max(12, Math.round(w / 26));
   groups.forEach((g, i) => {
     const alive = g.units.filter(u => u.hp > 0).length;
-    const cx = size * (i + 0.5) / n;
-    const sc = Math.min(size * 0.5, size * 0.9 / n);
-    drawMonster(ctx, g.mon, cx, size * 0.42, sc * (g.mon.flags.boss ? 1.25 : 1));
+    const cx = w * (i + 0.5) / n;
+    const box = Math.min(h * 0.74, w * 0.96 / n);
+    const bottom = h * 0.8;
+    const img = sprite(g.mon.id);
+    if (img.complete && img.naturalWidth && !img._failed) {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, Math.round(cx - box / 2), Math.round(bottom - box), Math.round(box), Math.round(box));
+    } else {
+      drawMonster(ctx, g.mon, cx, bottom - box / 2, box * 0.8);
+    }
     ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-    ctx.font = `${Math.max(11, size / 26)}px sans-serif`;
-    ctx.fillText(g.mon.name, cx, size * 0.78);
-    ctx.fillText(`×${alive}`, cx, size * 0.85);
+    ctx.font = `${fontPx}px sans-serif`;
+    ctx.fillText(n >= 3 ? g.mon.name.replace(/ザル=ガドラ$/, '') : g.mon.name, cx, bottom + fontPx * 1.2);
+    ctx.fillText(`×${alive}`, cx, bottom + fontPx * 2.4);
   });
 }
