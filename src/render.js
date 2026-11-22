@@ -277,7 +277,9 @@ export function preloadSprites(ids) { for (const id of ids) sprite(id); }
 // 戦闘画面（引き伸ばしのない実ピクセル座標 w×h で描く）
 // 絵は先頭グループの1枚だけを、画面の高さで決まる一定の整数倍率で描く（敵の数に関係なく同じ大きさ）。
 // 全グループは左上に名前と数の一覧で示す。
-export function battleScale(h) { return Math.max(1, Math.floor(h * 0.84 / SPRITE_PX)); }
+// 88pxのキャンバス全体が表示枠の高さの約6割になる整数倍率
+export const BATTLE_CANVAS_RATIO = 0.62;
+export function battleScale(h) { return Math.max(1, Math.floor(h * BATTLE_CANVAS_RATIO / SPRITE_PX)); }
 export function drawBattle(ctx, game, w, h) {
   const B = game.battle;
   ctx.fillStyle = 'rgba(0,0,0,0.72)';
@@ -287,7 +289,7 @@ export function drawBattle(ctx, game, w, h) {
   const lead = groups[0];
   const scale = battleScale(h);
   const size = SPRITE_PX * scale;
-  const bottom = Math.round(h * 0.94);
+  const bottom = Math.round(h * 0.86);
   const img = sprite(lead.mon.id);
   const ok = img.complete && img.naturalWidth && !img._failed;
   if (ok) {
