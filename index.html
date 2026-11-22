@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Auto Labyrinth</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <div id="loc">―</div>
+    <div id="gold">0G</div>
+  </header>
+  <div id="viewWrap">
+    <canvas id="view"></canvas>
+    <canvas id="map"></canvas>
+    <div id="banner"></div>
+  </div>
+  <div id="controls">
+    <button id="btnPause">⏸</button>
+    <button id="btnSpeed">×2</button>
+    <button id="btnMap">地図</button>
+    <button id="btnInfo">記録</button>
+    <button id="btnSettings">設定</button>
+  </div>
+  <div id="log"></div>
+  <table id="party"><thead><tr><th>名前</th><th>職</th><th>Lv</th><th>AC</th><th>HP</th><th>状態</th></tr></thead><tbody></tbody></table>
+</div>
+
+<div id="modal" class="hidden"><div id="modalBody"></div></div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
