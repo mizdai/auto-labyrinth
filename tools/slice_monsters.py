@@ -1,10 +1,11 @@
 """モンスター画像シート（9列×5行、マゼンタ背景、区切り線あり）を1体ずつのPNGに切り出す。
 
 使い方:
-  python3 tools/slice_monsters.py <シート> <出力フォルダ> "<id1> <id2> ..." [--native]
+  python3 tools/slice_monsters.py <シート> <出力フォルダ> "<id1> <id2> ..." [--native] [--fly=id1,id2,...]
 
 --native : 等倍のドット絵（1ドット=1ピクセル、背景は正確な #FF00FF）。
            切り出して背景を透明にするだけで、縮小・減色はしない。
+--fly    : 飛んでいる魔物。絵をマスの上の方（上端から FLY_TOP ドット）へ移動する。
 指定なし : 拡大・にじみのある画像。背景の透明化と縁の色補正 → 正方形に整える
            → 88×88に縮小 → 32色に減色。
 """
@@ -13,6 +14,7 @@ import numpy as np
 from PIL import Image
 
 OUT = 88
+FLY_TOP = 12
 COLORS = 32
 
 
@@ -37,6 +39,17 @@ def process_native(cell):
     alpha = np.where(bg, 0, 255).astype(np.uint8)
     rgb = np.where(bg[..., None], 0, a).astype(np.uint8)
     return Image.fromarray(np.dstack([rgb, alpha]), 'RGBA')
+
+
+def lift(img, top):
+    """不透明部分の上端が top になるよう、絵を上下に移動する（左右はそのまま）"""
+    bbox = img.getbbox()
+    if not bbox:
+        return img
+    dy = top - bbox[1]
+    out = Image.new('RGBA', img.size, (0, 0, 0, 0))
+    out.paste(img, (0, dy), img)
+    return out
 
 
 def is_bg(a):
@@ -84,6 +97,10 @@ def process_scaled(cell):
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     native = '--native' in sys.argv
+    fly = set()
+    for a in sys.argv[1:]:
+        if a.startswith('--fly='):
+            fly |= set(a[len('--fly='):].split(','))
     src, outdir, ids = args[0], args[1], args[2].split()
     im = Image.open(src).convert('RGB')
     a = np.asarray(im).astype(int)
@@ -103,6 +120,8 @@ def main():
                 x0, x1 = cols[c][1] + 3, cols[c + 1][0] - 2
                 y0, y1 = rows[r][1] + 3, rows[r + 1][0] - 2
                 img = process_scaled(im.crop((x0, y0, x1, y1)))
+            if ids[k] in fly:
+                img = lift(img, FLY_TOP)
             sizes.add(img.size)
             img.save(f'{outdir}/{ids[k]}.png', optimize=True)
             k += 1
