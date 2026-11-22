@@ -174,7 +174,10 @@ export function drawMap(ctx, game, size) {
   if (game.location !== 'dungeon') return;
   const F = game.F, known = game.knownMap();
   const cs = size / W;
-  ctx.lineWidth = 1;
+  const lw = Math.max(1, Math.round(cs / 9));
+  ctx.lineWidth = lw;
+  ctx.lineCap = 'butt';
+  const doors = [];
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     if (!known[y * W + x]) continue;
     const c = F.cell(x, y);
@@ -184,19 +187,39 @@ export function drawMap(ctx, game, size) {
       const col = { up: '#80c0ff', down: '#80c0ff', lair: '#c08040', pit: '#c04040', teleport: '#a060e0', alarm: '#e0a020', boss: '#ff4040' }[c.type];
       if (col) { ctx.fillStyle = col; ctx.fillRect(x * cs + cs * 0.3, y * cs + cs * 0.3, cs * 0.4, cs * 0.4); }
     }
+  }
+  // 壁（扉も壁の線として描き、あとで扉の印を重ねる）
+  ctx.strokeStyle = '#c8d0d8';
+  ctx.beginPath();
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (!known[y * W + x]) continue;
+    const x0 = x * cs, y0 = y * cs;
     for (let d = 0; d < 4; d++) {
       const w = F.wall(x, y, d);
       if (w === 0) continue;
-      ctx.strokeStyle = w === DOOR ? DOORC : '#c8d0d8';
-      ctx.beginPath();
-      const x0 = x * cs, y0 = y * cs;
       if (d === 0) { ctx.moveTo(x0, y0); ctx.lineTo(x0 + cs, y0); }
       if (d === 1) { ctx.moveTo(x0 + cs, y0); ctx.lineTo(x0 + cs, y0 + cs); }
       if (d === 2) { ctx.moveTo(x0, y0 + cs); ctx.lineTo(x0 + cs, y0 + cs); }
       if (d === 3) { ctx.moveTo(x0, y0); ctx.lineTo(x0, y0 + cs); }
-      ctx.stroke();
+      if (w === DOOR) doors.push([x, y, d]);
     }
   }
+  ctx.stroke();
+  // 扉：壁を横切る2本の短い線（縦の壁なら「＝」、横の壁なら「‖」）
+  ctx.strokeStyle = DOORC;
+  ctx.beginPath();
+  const half = cs * 0.3, gap = Math.max(lw * 1.5, cs * 0.12);
+  for (const [x, y, d] of doors) {
+    const x0 = x * cs, y0 = y * cs;
+    if (d === 0 || d === 2) {          // 横の壁
+      const wy = d === 0 ? y0 : y0 + cs, mx = x0 + cs / 2;
+      for (const o of [-gap, gap]) { ctx.moveTo(mx + o, wy - half); ctx.lineTo(mx + o, wy + half); }
+    } else {                            // 縦の壁
+      const wx = d === 3 ? x0 : x0 + cs, my = y0 + cs / 2;
+      for (const o of [-gap, gap]) { ctx.moveTo(wx - half, my + o); ctx.lineTo(wx + half, my + o); }
+    }
+  }
+  ctx.stroke();
   // 現在地
   const px = (game.x + 0.5) * cs, py = (game.y + 0.5) * cs;
   ctx.fillStyle = '#40ff80';
