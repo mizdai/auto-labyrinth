@@ -1,7 +1,7 @@
 // 画面・入力・メインループ
 import { Game, SAVE_KEY, COMPOSITIONS } from './game.js';
 import { POLICIES, SPELL_USE, partyLevel, targetFloor } from './ai.js';
-import { drawView, drawMap, drawBattle } from './render.js';
+import { drawView, drawMap, drawBattle, poseOf } from './render.js';
 import { CLASSES, RACES, ALIGN_NAMES, STAT_NAMES, STATS, STATUS_NAMES, SCHOOL_NAMES } from './data.js';
 import { ITEMS, SLOTS, SLOT_NAMES, itemName } from './items.js';
 import { charAC, expNext, maxSlots, knownSpells, isAlive } from './character.js';
@@ -69,6 +69,34 @@ function step() {
   return typeof r.value === 'number' ? r.value : 1;
 }
 
+// ---- 視点アニメーション ----
+// ゲーム内の位置・向きが1歩分変わったら、カメラを補間して滑らかに動かす
+const anim = { from: null, to: null, t0: 0, dur: 0 };
+const ease = (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+function angDiff(a, b) { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; }
+function camAt(now) {
+  if (!anim.to) return null;
+  const t = anim.dur > 0 ? Math.min(1, (now - anim.t0) / anim.dur) : 1;
+  if (t >= 1) return anim.to;
+  const e = ease(t), A = anim.from, B = anim.to;
+  return { ...B, x: A.x + (B.x - A.x) * e, y: A.y + (B.y - A.y) * e, a: A.a + angDiff(A.a, B.a) * e };
+}
+function updateCam(now) {
+  const target = poseOf(game);
+  const prev = anim.to;
+  if (!prev || prev.x !== target.x || prev.y !== target.y || prev.a !== target.a || prev.floor !== target.floor || prev.loc !== target.loc) {
+    const cur = camAt(now) || target;
+    const sp = SPEEDS[game.settings.speed] || SPEEDS[1];
+    const step = prev && prev.floor === target.floor && prev.loc === target.loc && target.loc === 'dungeon'
+      && Math.abs(prev.x - target.x) + Math.abs(prev.y - target.y) <= 1;
+    anim.from = step ? cur : target;
+    anim.to = target;
+    anim.t0 = now;
+    anim.dur = step && sp.ms >= 40 ? Math.min(320, sp.ms * 0.8) : 0;
+  }
+  return camAt(now);
+}
+
 // ---- 描画 ----
 let lastPartyHtml = '';
 function render() {
@@ -82,7 +110,7 @@ function render() {
   vctx.fillStyle = '#000'; vctx.fillRect(0, 0, w, h);
   vctx.translate((w - size) / 2, (h - size / 1.28) / 2);
   vctx.scale(1, 1 / 1.28);
-  drawView(vctx, game, size);
+  drawView(vctx, game, size, updateCam(performance.now()));
   if (game.battle) drawBattle(vctx, game, size);
   vctx.restore();
 

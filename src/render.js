@@ -5,92 +5,145 @@ const LINE = '#d8e0e8';
 const DOORC = '#e8c060';
 const DIM = '#5a6470';
 
-// 奥行きごとの面の位置（画面サイズに対する割合）
-const DEPTH = [0, 0.14, 0.3, 0.39, 0.445, 0.475];
+// ---- 透視投影による3D表示 ----
+// 区画(x,y)はワールド座標 [x,x+1]×[y,y+1] を占める。壁の高さは1、目の高さは0.5。
+// cam: { x, y, a } … x,y は区画中心基準の連続座標、a は向き（0=北、π/2=東）
+const NEAR = 0.04;
+const VIEW_RANGE = 7;
+const CAM_BACK = 0.25;  // 区画の中心から少し後ろに立つ
+const FOCAL = 0.55;     // 画面幅に対する焦点距離
 
-export function drawView(ctx, game, size) {
+export function poseOf(game) {
+  return { x: game.x + 0.5, y: game.y + 0.5, a: game.dir * Math.PI / 2, floor: game.floor, loc: game.location };
+}
+
+export function drawView(ctx, game, size, cam = poseOf(game)) {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, size, size);
   ctx.lineWidth = Math.max(1, size / 220);
   ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
   ctx.strokeStyle = LINE;
   if (game.location === 'town') { drawTown(ctx, size); return; }
   const F = game.F;
-  const here = F.cell(game.x, game.y);
-  if (here.dark) {
+  const fx = Math.sin(cam.a), fy = -Math.cos(cam.a);   // 前方
+  const rx = Math.cos(cam.a), ry = Math.sin(cam.a);    // 右
+  const ex = cam.x - fx * CAM_BACK, ey = cam.y - fy * CAM_BACK;
+  const ccx = Math.floor(cam.x), ccy = Math.floor(cam.y);
+  if (F.inside(ccx, ccy) && F.cell(ccx, ccy).dark) {
     ctx.fillStyle = DIM; ctx.font = `${size / 14}px sans-serif`; ctx.textAlign = 'center';
     ctx.fillText('暗闇', size / 2, size / 2);
     return;
   }
-  const dir = game.dir;
-  const right = (dir + 1) % 4, left = (dir + 3) % 4;
-  const box = (i) => { const m = DEPTH[i] * size; return { l: m, t: m * 0.9, r: size - m, b: size - m * 0.9 }; };
-  let x = game.x, y = game.y;
-  for (let d = 0; d < DEPTH.length - 1; d++) {
-    if (!F.inside(x, y)) break;
-    const cell = F.cell(x, y);
-    if (d > 0 && cell.dark) { fillFrame(ctx, box(d)); break; }
-    const n = box(d), f = box(d + 1);
-    // 左右の壁
-    for (const [side, sx] of [[left, 'l'], [right, 'r']]) {
-      const w = F.wall(x, y, side);
-      const nx = n[sx], fx = f[sx];
-      if (w === WALL || w === DOOR) {
-        line(ctx, nx, n.t, fx, f.t); line(ctx, nx, n.b, fx, f.b);
-        line(ctx, fx, f.t, fx, f.b);
-        if (d > 0) line(ctx, nx, n.t, nx, n.b);
-        if (w === DOOR) {
-          // 側面の扉
-          ctx.strokeStyle = DOORC;
-          const a = 0.25, b = 0.75;
-          const px1 = nx + (fx - nx) * a, px2 = nx + (fx - nx) * b;
-          const ty1 = n.t + (f.t - n.t) * a, ty2 = n.t + (f.t - n.t) * b;
-          const by1 = n.b + (f.b - n.b) * a, by2 = n.b + (f.b - n.b) * b;
-          const hy1 = ty1 + (by1 - ty1) * 0.2, hy2 = ty2 + (by2 - ty2) * 0.2;
-          ctx.beginPath(); ctx.moveTo(px1, by1); ctx.lineTo(px1, hy1); ctx.lineTo(px2, hy2); ctx.lineTo(px2, by2); ctx.stroke();
-          ctx.strokeStyle = LINE;
-        }
-      } else {
-        // 横道：隣の区画の奥の壁を描く
-        const sxn = x + DX[side], syn = y + DY[side];
-        const fw = F.inside(sxn, syn) ? F.wall(sxn, syn, dir) : WALL;
-        if (fw !== 0) { line(ctx, nx, f.t, fx, f.t); line(ctx, nx, f.b, fx, f.b); }
-        line(ctx, fx, f.t, fx, f.b);
-        if (d > 0) line(ctx, nx, n.t, nx, n.b);
+  const f = FOCAL * size, half = size / 2;
+  // ワールド座標(wx,wy,h) → カメラ座標(xc,zc,yc)
+  const toCam = (wx, wy, h) => {
+    const dx = wx - ex, dy = wy - ey;
+    return [dx * rx + dy * ry, dx * fx + dy * fy, h - 0.5];
+  };
+  const proj = (p) => [half + p[0] / p[1] * f, half - p[2] / p[1] * f];
+
+  // 描画対象を集める
+  const items = [];
+  const isDark = (x, y) => F.inside(x, y) && F.cell(x, y).dark;
+  const seen = new Set();
+  for (let y = ccy - VIEW_RANGE; y <= ccy + VIEW_RANGE; y++) {
+    for (let x = ccx - VIEW_RANGE; x <= ccx + VIEW_RANGE; x++) {
+      if (!F.inside(x, y)) continue;
+      const dark = isDark(x, y);
+      for (let d = 0; d < 4; d++) {
+        const key = d === 0 ? `h${x},${y}` : d === 2 ? `h${x},${y + 1}` : d === 3 ? `v${x},${y}` : `v${x + 1},${y}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const w = F.wall(x, y, d);
+        const nx = x + DX[d], ny = y + DY[d];
+        const otherDark = !F.inside(nx, ny) || isDark(nx, ny);
+        // 壁の両端点
+        const [x1, y1, x2, y2] = d === 0 ? [x, y, x + 1, y] : d === 2 ? [x, y + 1, x + 1, y + 1] : d === 3 ? [x, y, x, y + 1] : [x + 1, y, x + 1, y + 1];
+        let kind = null;
+        if (w !== 0) kind = (dark && otherDark) ? null : (w === DOOR ? 'door' : 'wall');
+        else if (dark !== isDark(nx, ny) && F.inside(nx, ny)) kind = 'fog';   // 暗闇との境目
+        if (!kind) continue;
+        items.push({ kind, x1, y1, x2, y2, dist: dist2((x1 + x2) / 2, (y1 + y2) / 2, ex, ey) });
+      }
+      const c = F.cell(x, y);
+      if (!dark && (c.type === 'up' || c.type === 'down' || c.type === 'boss')) {
+        items.push({ kind: 'mark', x, y, type: c.type, dist: dist2(x + 0.5, y + 0.5, ex, ey) });
       }
     }
-    // 床の印（階段など）
-    if (d > 0 || true) drawFloorMark(ctx, cell, n, f, size, d);
-    // 正面の壁
-    const fw = F.wall(x, y, dir);
-    if (fw === WALL || fw === DOOR) {
-      rect(ctx, f.l, f.t, f.r, f.b);
-      if (fw === DOOR) {
-        ctx.strokeStyle = DOORC;
-        const w = f.r - f.l, h = f.b - f.t;
-        ctx.beginPath();
-        ctx.moveTo(f.l + w * 0.28, f.b); ctx.lineTo(f.l + w * 0.28, f.t + h * 0.18);
-        ctx.lineTo(f.r - w * 0.28, f.t + h * 0.18); ctx.lineTo(f.r - w * 0.28, f.b);
-        ctx.stroke();
-        ctx.strokeStyle = LINE;
-      }
-      break;
+  }
+  // 遠いものから描く（手前の壁が奥を塗りつぶす）
+  items.sort((a, b) => b.dist - a.dist);
+  for (const it of items) {
+    if (it.kind === 'mark') { drawMark(ctx, it, toCam, proj, size); continue; }
+    const quad = [toCam(it.x1, it.y1, 0), toCam(it.x2, it.y2, 0), toCam(it.x2, it.y2, 1), toCam(it.x1, it.y1, 1)];
+    const poly = clipNear(quad);
+    if (poly.length < 3) continue;
+    const pts = poly.map(proj);
+    ctx.beginPath();
+    pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+    ctx.closePath();
+    ctx.fillStyle = it.kind === 'fog' ? '#0b0d12' : '#000';
+    ctx.fill();
+    ctx.strokeStyle = it.kind === 'fog' ? '#1c2230' : LINE;
+    ctx.stroke();
+    if (it.kind === 'door') {
+      // 扉の枠（壁面上の u=0.25〜0.75、高さ0〜0.8）
+      const P = (u, h) => toCam(it.x1 + (it.x2 - it.x1) * u, it.y1 + (it.y2 - it.y1) * u, h);
+      ctx.strokeStyle = DOORC;
+      strokeSeg(ctx, P(0.25, 0), P(0.25, 0.8), proj);
+      strokeSeg(ctx, P(0.25, 0.8), P(0.75, 0.8), proj);
+      strokeSeg(ctx, P(0.75, 0.8), P(0.75, 0), proj);
+      ctx.strokeStyle = LINE;
     }
-    x += DX[dir]; y += DY[dir];
   }
 }
 
-function drawFloorMark(ctx, cell, n, f, size, d) {
-  if (!cell.type || !['up', 'down', 'boss'].includes(cell.type)) return;
-  const cx = (n.l + n.r + f.l + f.r) / 4;
-  const fy = (n.b + f.b) / 2;
-  ctx.fillStyle = cell.type === 'boss' ? '#e05050' : '#80c0ff';
-  ctx.font = `${Math.max(10, size / (12 + d * 6))}px sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.fillText(cell.type === 'up' ? '▲上り階段' : cell.type === 'down' ? '▼下り階段' : '◆', cx, fy);
+const dist2 = (ax, ay, bx, by) => (ax - bx) * (ax - bx) + (ay - by) * (ay - by);
+
+// 近クリップ面 zc >= NEAR で多角形を切り取る（Sutherland–Hodgman）
+function clipNear(poly) {
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const ain = a[1] >= NEAR, bin = b[1] >= NEAR;
+    if (ain) out.push(a);
+    if (ain !== bin) out.push(lerpZ(a, b));
+  }
+  return out;
+}
+function lerpZ(a, b) {
+  const t = (NEAR - a[1]) / (b[1] - a[1]);
+  return [a[0] + (b[0] - a[0]) * t, NEAR, a[2] + (b[2] - a[2]) * t];
+}
+function strokeSeg(ctx, a, b, proj) {
+  if (a[1] < NEAR && b[1] < NEAR) return;
+  if (a[1] < NEAR) a = lerpZ(a, b);
+  if (b[1] < NEAR) b = lerpZ(a, b);
+  const p = proj(a), q = proj(b);
+  ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
 }
 
-function fillFrame(ctx, b) { ctx.fillStyle = '#0a0a0a'; ctx.fillRect(b.l, b.t, b.r - b.l, b.b - b.t); }
+function drawMark(ctx, it, toCam, proj, size) {
+  const col = it.type === 'boss' ? '#e05050' : '#80c0ff';
+  const quad = [[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]].map(([u, v]) => toCam(it.x + u, it.y + v, 0));
+  const poly = clipNear(quad);
+  if (poly.length < 3) return;
+  const pts = poly.map(proj);
+  ctx.strokeStyle = col;
+  ctx.beginPath();
+  pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+  ctx.closePath(); ctx.stroke();
+  ctx.strokeStyle = LINE;
+  const c = toCam(it.x + 0.5, it.y + 0.5, 0);
+  if (c[1] < 0.3 || c[1] > 3.5) return;
+  const [sx, sy] = proj(c);
+  ctx.fillStyle = col;
+  ctx.font = `${Math.max(10, Math.min(size / 12, size / (8 * c[1])))}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText(it.type === 'up' ? '▲上り階段' : it.type === 'down' ? '▼下り階段' : '◆', sx, Math.min(size - 6, sy));
+}
+
 function line(ctx, x1, y1, x2, y2) { ctx.strokeStyle = ctx.strokeStyle || LINE; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
 function rect(ctx, l, t, r, b) { ctx.beginPath(); ctx.rect(l, t, r - l, b - t); ctx.stroke(); }
 
