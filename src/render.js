@@ -275,47 +275,41 @@ function contentBox(img) {
 export function preloadSprites(ids) { for (const id of ids) sprite(id); }
 
 // 戦闘画面（引き伸ばしのない実ピクセル座標 w×h で描く）
-// 全魔物を同じ整数倍率で描き、ドットの大きさを揃える。
-// 横に入りきらないときだけ、その戦闘の全員の倍率を一段ずつ下げる。
+// 絵は先頭グループの1枚だけを、画面の高さで決まる一定の整数倍率で描く（敵の数に関係なく同じ大きさ）。
+// 全グループは左上に名前と数の一覧で示す。
+export function battleScale(h) { return Math.max(1, Math.floor(h * 0.84 / SPRITE_PX)); }
 export function drawBattle(ctx, game, w, h) {
   const B = game.battle;
   ctx.fillStyle = 'rgba(0,0,0,0.72)';
   ctx.fillRect(0, 0, w, h);
   const groups = B.groups.filter(g => g.units.some(u => u.hp > 0));
-  const n = groups.length;
-  const fontPx = Math.max(12, Math.round(w / 26));
-  const bottom = h * 0.8;
-  const items = groups.map(g => {
-    const img = sprite(g.mon.id);
-    const ok = img.complete && img.naturalWidth && !img._failed;
-    const box = ok && img._bbox ? img._bbox : { l: 0, r: SPRITE_PX };
-    return { g, img, ok, box, cw: box.r - box.l };
-  });
-  const gap = SPRITE_PX * 0.06;
-  const totalW = items.reduce((sum, it) => sum + it.cw, 0) + gap * (n - 1);
-  let scale = Math.max(1, Math.floor(h * 0.76 / SPRITE_PX));
-  while (scale > 1 && totalW * scale > w * 0.98) scale--;
-  if (totalW * scale > w * 0.98) scale = w * 0.98 / totalW; // それでも入らない場合のみ端数倍率
-  let x = (w - totalW * scale) / 2;
-  for (const it of items) {
-    const { g, img, ok, box } = it;
-    const cx = x + it.cw * scale / 2;           // 不透明部分の中心
-    const left = Math.round(x - box.l * scale);  // キャンバスの左端
-    const size = Math.round(SPRITE_PX * scale);
-    if (ok) {
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, left, Math.round(bottom - size), size, size);
-    } else {
-      drawMonster(ctx, g.mon, cx, bottom - size / 2, size * 0.8);
-    }
-    const alive = g.units.filter(u => u.hp > 0).length;
-    const name = n >= 3 ? g.mon.name.replace(/ザル=ガドラ$/, '') : g.mon.name;
-    const room = n > 1 ? (it.cw + gap) * scale : w;   // 名前が隣と重ならない幅
-    const fp = Math.max(9, Math.min(fontPx, Math.floor(room * 0.98 / name.length)));
-    ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-    ctx.font = `${fp}px sans-serif`;
-    ctx.fillText(name, cx, bottom + fontPx * 1.2);
-    ctx.fillText(`×${alive}`, cx, bottom + fontPx * 2.4);
-    x += (it.cw + gap) * scale;
+  if (!groups.length) return;
+  const lead = groups[0];
+  const scale = battleScale(h);
+  const size = SPRITE_PX * scale;
+  const bottom = Math.round(h * 0.94);
+  const img = sprite(lead.mon.id);
+  const ok = img.complete && img.naturalWidth && !img._failed;
+  if (ok) {
+    // 描かれている部分の中心を画面中央に（余白はそのまま）
+    const box = img._bbox || { l: 0, r: SPRITE_PX };
+    const left = Math.round(w / 2 - ((box.l + box.r) / 2) * scale);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, left, bottom - size, size, size);
+  } else {
+    drawMonster(ctx, lead.mon, w / 2, bottom - size / 2, size * 0.8);
   }
+  // 敵グループの一覧
+  const fp = Math.max(12, Math.round(w / 28));
+  const lines = groups.map(g => `${g.mon.name} ×${g.units.filter(u => u.hp > 0).length}`);
+  ctx.font = `${fp}px sans-serif`;
+  const bw = Math.max(...lines.map(t => ctx.measureText(t).width)) + fp * 1.2;
+  const pad = fp * 0.5;
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(pad, pad, bw, lines.length * fp * 1.35 + pad);
+  ctx.textAlign = 'left';
+  lines.forEach((t, i) => {
+    ctx.fillStyle = i === 0 ? '#ffd070' : '#d8e0e8';
+    ctx.fillText(t, pad + fp * 0.6, pad + fp * (1.1 + i * 1.35));
+  });
 }
