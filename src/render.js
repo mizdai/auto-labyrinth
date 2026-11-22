@@ -244,22 +244,39 @@ export function drawMonster(ctx, mon, cx, cy, scale, alpha = 1) {
   ctx.globalAlpha = 1;
 }
 
-// 魔物の画像（assets/monsters/<id>.png）。読み込めなければ簡易ドット絵で代用
+// 魔物の画像（assets/monsters/<id>.png、全員同じ 88×88 のキャンバス）。読み込めなければ簡易ドット絵で代用
+const SPRITE_PX = 88;
 const spriteCache = new Map();
 function sprite(id) {
   if (!spriteCache.has(id)) {
     const img = new Image();
     img.onerror = () => { img._failed = true; };
+    img.onload = () => { img._bbox = contentBox(img); };
     img.src = new URL(`../assets/monsters/${id}.png`, import.meta.url).href;
     spriteCache.set(id, img);
   }
   return spriteCache.get(id);
 }
+// 不透明部分の左右の範囲（並べるときの幅にだけ使う。描画は余白ごと行う）
+function contentBox(img) {
+  try {
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const x = c.getContext('2d');
+    x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, c.width, c.height).data;
+    let l = c.width, r = -1;
+    for (let yy = 0; yy < c.height; yy++) for (let xx = 0; xx < c.width; xx++) {
+      if (d[(yy * c.width + xx) * 4 + 3] > 0) { if (xx < l) l = xx; if (xx > r) r = xx; }
+    }
+    return r >= 0 ? { l, r: r + 1 } : { l: 0, r: c.width };
+  } catch (e) { return { l: 0, r: img.naturalWidth }; }
+}
 export function preloadSprites(ids) { for (const id of ids) sprite(id); }
 
 // 戦闘画面（引き伸ばしのない実ピクセル座標 w×h で描く）
-// 大きさはサイズ区分で決める。画面に収まらないときは全員を同じ比率で縮め、大小関係を保つ
-const SIZE_H = { S: 0.3, M: 0.58, L: 0.82, XL: 1.0 };
+// 全魔物を同じ整数倍率で描き、ドットの大きさを揃える。
+// 横に入りきらないときだけ、その戦闘の全員の倍率を一段ずつ下げる。
 export function drawBattle(ctx, game, w, h) {
   const B = game.battle;
   ctx.fillStyle = 'rgba(0,0,0,0.72)';
@@ -267,33 +284,38 @@ export function drawBattle(ctx, game, w, h) {
   const groups = B.groups.filter(g => g.units.some(u => u.hp > 0));
   const n = groups.length;
   const fontPx = Math.max(12, Math.round(w / 26));
-  const bottom = h * 0.8, availH = h * 0.74, slotW = w / n;
+  const bottom = h * 0.8;
   const items = groups.map(g => {
     const img = sprite(g.mon.id);
     const ok = img.complete && img.naturalWidth && !img._failed;
-    const sw = ok ? img.naturalWidth : 64, sh = ok ? img.naturalHeight : 64;
-    // 横長の魔物は幅も考慮して「見た目の大きさ」を測る
-    const apparent = Math.max(sh, sw * 0.7);
-    const scale = availH * (SIZE_H[g.mon.size] || SIZE_H.M) / apparent;
-    return { g, img, ok, sw, sh, scale };
+    const box = ok && img._bbox ? img._bbox : { l: 0, r: SPRITE_PX };
+    return { g, img, ok, box, cw: box.r - box.l };
   });
-  let shrink = 1;
-  for (const it of items) shrink = Math.min(shrink, slotW * 0.94 / (it.sw * it.scale), availH / (it.sh * it.scale));
-  items.forEach((it, i) => {
-    const { g, img, ok, sw, sh } = it;
-    const sc = it.scale * shrink;
-    const dw = sw * sc, dh = sh * sc;
-    const cx = slotW * (i + 0.5);
+  const gap = SPRITE_PX * 0.06;
+  const totalW = items.reduce((sum, it) => sum + it.cw, 0) + gap * (n - 1);
+  let scale = Math.max(1, Math.floor(h * 0.76 / SPRITE_PX));
+  while (scale > 1 && totalW * scale > w * 0.98) scale--;
+  if (totalW * scale > w * 0.98) scale = w * 0.98 / totalW; // それでも入らない場合のみ端数倍率
+  let x = (w - totalW * scale) / 2;
+  for (const it of items) {
+    const { g, img, ok, box } = it;
+    const cx = x + it.cw * scale / 2;           // 不透明部分の中心
+    const left = Math.round(x - box.l * scale);  // キャンバスの左端
+    const size = Math.round(SPRITE_PX * scale);
     if (ok) {
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, Math.round(cx - dw / 2), Math.round(bottom - dh), Math.round(dw), Math.round(dh));
+      ctx.drawImage(img, left, Math.round(bottom - size), size, size);
     } else {
-      drawMonster(ctx, g.mon, cx, bottom - dh / 2, dh);
+      drawMonster(ctx, g.mon, cx, bottom - size / 2, size * 0.8);
     }
     const alive = g.units.filter(u => u.hp > 0).length;
+    const name = n >= 3 ? g.mon.name.replace(/ザル=ガドラ$/, '') : g.mon.name;
+    const room = n > 1 ? (it.cw + gap) * scale : w;   // 名前が隣と重ならない幅
+    const fp = Math.max(9, Math.min(fontPx, Math.floor(room * 0.98 / name.length)));
     ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-    ctx.font = `${fontPx}px sans-serif`;
-    ctx.fillText(n >= 3 ? g.mon.name.replace(/ザル=ガドラ$/, '') : g.mon.name, cx, bottom + fontPx * 1.2);
+    ctx.font = `${fp}px sans-serif`;
+    ctx.fillText(name, cx, bottom + fontPx * 1.2);
     ctx.fillText(`×${alive}`, cx, bottom + fontPx * 2.4);
-  });
+    x += (it.cw + gap) * scale;
+  }
 }

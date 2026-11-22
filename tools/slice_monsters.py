@@ -2,7 +2,7 @@
 
 使い方: python3 tools/slice_monsters.py assets/src/monsters-sheet.png assets/monsters "<id1> <id2> ..."
 処理: 枠線の検出 → 切り出し → 背景(マゼンタ)の透明化と縁の色補正 → 正方形に整える
-      → 88×88に縮小 → 32色に減色 → 余白を切り詰めてPNG出力
+      → 88×88に縮小 → 32色に減色 → PNG出力（余白は残す）
 """
 import sys
 import numpy as np
@@ -69,10 +69,8 @@ def process(cell):
     # 不透明部分だけで減色
     q = Image.fromarray(rgb, 'RGB').quantize(colors=COLORS, method=Image.Quantize.MEDIANCUT).convert('RGB')
     out = np.dstack([np.asarray(q), np.where(opaque, 255, 0).astype(np.uint8)])
-    img = Image.fromarray(out, 'RGBA')
-    # 余白を切り詰める（大きさはゲーム側でサイズ区分に応じて決める）
-    bbox = img.getbbox()
-    return img.crop(bbox) if bbox else img
+    # 余白はそのまま残す（描かれた大きさ＝ゲーム内の大きさ）
+    return Image.fromarray(out, 'RGBA')
 
 
 def main():

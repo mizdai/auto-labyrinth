@@ -51,9 +51,6 @@ const RAW = [
   ['abysslord',  '深淵の主ザル=ガドラ', 20, '40d10+60', -6, '4d8,4d8', '1d1', '0-0', 'demon', 'mage7 priest5 resist60 noSleep boss breath'],
 ];
 
-// 見た目の大きさ区分（S:人の膝まで M:人間大 L:人の1.5〜3倍 XL:巨大）
-export const MONSTER_SIZE = { rat: 'S', bat: 'S', slime: 'S', kobold: 'S', footpad: 'M', apprentice: 'M', bonedog: 'S', goblin: 'S', wilddog: 'S', viper: 'S', zombie: 'M', acolyte: 'M', skeleton: 'M', bandit: 'M', spider: 'S', sorcerer: 'M', beetle: 'S', orc: 'M', ghoul: 'M', wisp: 'S', magician: 'M', werewolf: 'M', vampbat: 'M', basilisk: 'M', troll: 'L', darkpriest: 'M', minotaur: 'L', wraith: 'M', firespirit: 'M', chimera: 'L', archmage: 'M', golem: 'L', youngdragon: 'L', vampire: 'M', gargoyle: 'M', assassin: 'M', frostgiant: 'XL', lesserdemon: 'L', necromancer: 'M', poisondragon: 'L', elderdragon: 'XL', lich: 'M', greaterdemon: 'XL', shadowmaster: 'M', abysslord: 'XL' };
-
 export const MONSTERS = {};
 for (const [id, name, lv, hp, ac, atk, grp, fl, type, flags] of RAW) {
   const [f1, f2] = fl.split('-').map(Number);
@@ -63,7 +60,6 @@ for (const [id, name, lv, hp, ac, atk, grp, fl, type, flags] of RAW) {
     atk: atk.split(',').map(parseDice),
     group: parseDice(grp),
     floors: [f1, f2],
-    size: MONSTER_SIZE[id] || 'M',
     flags: {},
   };
   for (const tok of flags.split(/\s+/).filter(Boolean)) {
