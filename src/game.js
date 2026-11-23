@@ -587,7 +587,7 @@ export class Game {
     for (const c of this.party) {
       if (!isAlive(c)) continue;
       if (c.poison) {
-        const i = this.bag.findIndex(e => ITEMS[e.id].use === 'cure');
+        const i = this.bag.findIndex(e => e.identified && ITEMS[e.id].use === 'cure');
         if (i >= 0) { this.bag.splice(i, 1); c.poison = false; this.log(`${c.name}は毒消しを飲んだ。`); did = true; yield 1; }
       }
       if (c.hp < c.maxhp * 0.35) {
@@ -719,9 +719,9 @@ export class Game {
     }
     for (let i = 0; i < n; i++) {
       const it = this.dropItem(floor);
-      const name = it.floor === 0 ? it.name : it.unknown;
+      const name = it.unknown;   // 拾った品はすべて未鑑定
       if (this.bag.length < 24) {
-        this.bag.push({ id: it.id, identified: it.floor === 0 });
+        this.bag.push({ id: it.id, identified: false });
         this.log(`${name}を見つけた。`, 'good');
       } else {
         this.log(`${name}は持ちきれなかった。`);

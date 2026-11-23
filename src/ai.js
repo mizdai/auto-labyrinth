@@ -177,7 +177,7 @@ export function shouldReturn(game) {
   if (!healAvail && game.party.some(x => isAlive(x) && x.hp < x.maxhp * 0.35)) return '瀕死の仲間がいる';
   if (c.hasHealer && c.healMP < 0.15 && c.hp < 0.8) return '回復の呪文が尽きた';
   if (c.mageMP < 0.1 && game.floor >= 3 && c.hp < 0.9) return '呪文が尽きた';
-  if (game.party.some(x => x.poison) && !game.party.some(x => canCast(x, SPELL_BY_ID.gedoku)) && !game.bag.some(e => ITEMS[e.id].use === 'cure')) return '毒を治すため';
+  if (game.party.some(x => x.poison) && !game.party.some(x => canCast(x, SPELL_BY_ID.gedoku)) && !game.bag.some(e => e.identified && ITEMS[e.id].use === 'cure')) return '毒を治すため';
   if (game.party.some(isAlive) && game.party.filter(isAlive).some(x => x.exp >= nextExp(x)) && c.hp < 0.85 && game.floor <= 2 && partyLevel(game) < 6) return 'レベルアップのため';
   return null;
 }

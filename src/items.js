@@ -73,7 +73,7 @@ export const SLOT_NAMES = { weapon: '武器', armor: '鎧', shield: '盾', helm:
 
 export const ITEMS = {};
 for (const [id, name, unknown, type, price, classes, props, floor] of RAW) {
-  const it = { id, name, unknown: unknown + '?', type, price, classes, floor, ...props };
+  const it = { id, name, unknown: '?' + unknown, type, price, classes, floor, ...props };
   if (props.dmg) it.dmg = parseDice(props.dmg);
   if (props.dice) it.dice = parseDice(props.dice);
   it.hit = props.hit || 0;
