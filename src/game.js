@@ -550,7 +550,7 @@ export class Game {
     }
   }
 
-  encounterRate(cell) { return (cell.dark ? 0.09 : 0.06) + this.floor * 0.002; }
+  encounterRate(cell) { return (cell.dark ? 0.07 : 0.045) + this.floor * 0.002; }
 
   chooseGoal() {
     const F = this.F, known = this.knownMap();
