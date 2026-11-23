@@ -245,15 +245,16 @@ function openChar(c) {
   const stats = STATS.map(k => `<td>${STAT_NAMES[k]}</td><td>${c.stats[k]}</td>`);
   const eq = SLOTS.map(s => `<tr><td>${SLOT_NAMES[s]}</td><td>${c.equip[s] ? ITEMS[c.equip[s].id].name : '―'}</td></tr>`).join('');
   const ms = maxSlots(c);
-  const slots = ['mage', 'priest'].filter(sc => ms[sc][0] > 0).map(sc => `<tr><td>${SCHOOL_NAMES[sc]}</td><td>${c.mp[sc].map((v, i) => ms[sc][i] ? `${v}/${ms[sc][i]}` : '-').join(' ')}</td></tr>`).join('');
+  // 職業が使える系統は、まだ覚えていないレベルも 0/0 で表示
+  const slots = Object.keys(cl.spells).map(sc => `<tr><td>${SCHOOL_NAMES[sc]}</td><td>${c.mp[sc].map((v, i) => `${ms[sc][i] ? v : 0}/${ms[sc][i]}`).join(' ')}</td></tr>`).join('');
   const spells = knownSpells(c).map(s => s.name).join('、') || 'なし';
   openModal(`<h2>${c.name}</h2>
   <div>${RACES[c.race].name}・${ALIGN_NAMES[c.align]}・${cl.name}　Lv${c.level}　${c.age}歳</div>
   <div>HP ${c.hp}/${c.maxhp}　AC ${charAC(c)}　${STATUS_NAMES[c.status] || '健康'}${c.poison ? '・毒' : ''}</div>
   <div>経験値 ${c.exp.toLocaleString()}（次まで ${Math.max(0, expNext(c) - c.exp).toLocaleString()}）　倒した数 ${c.kills || 0}</div>
-  <h3>能力値</h3><table><tr>${stats.slice(0, 3).join('')}</tr><tr>${stats.slice(3).join('')}</tr></table>
-  <h3>装備</h3><table>${eq}</table>
-  ${slots ? `<h3>呪文の回数（Lv1〜7）</h3><table>${slots}</table><div class="note">${spells}</div>` : ''}
+  <table class="sec"><tr>${stats.slice(0, 3).join('')}</tr><tr>${stats.slice(3).join('')}</tr></table>
+  <table class="sec">${eq}</table>
+  ${slots ? `<table class="sec">${slots}</table><div class="note">${spells}</div>` : ''}
   <button id="cClose">閉じる</button>`);
   $('#cClose').onclick = closeModal;
 }
