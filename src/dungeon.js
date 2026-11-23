@@ -7,7 +7,7 @@ export const W = 20, H = 20;
 export const DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];
 export const DIR_NAMES = ['北', '東', '南', '西'];
 export const OPEN = 0, WALL = 1, DOOR = 2, SEAL = 3;  // SEAL: 近道の扉（開通するまで通れない）
-export const MAP_VERSION = 3;
+export const MAP_VERSION = 4;
 export const MAX_FLOOR = 10;
 
 export class Floor {
