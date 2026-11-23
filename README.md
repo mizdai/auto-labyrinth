@@ -30,7 +30,7 @@
 - `src/items.js` アイテム
 - `src/monsters.js` モンスター
 - `src/character.js` キャラクター生成・能力計算・経験値
-- `src/dungeon.js` 迷宮生成（20×20×10階）・経路探索
+- `src/dungeon.js` 迷宮生成（20×20×10階。まっすぐな通路と部屋、下り階段の部屋から開く近道）・経路探索
 - `src/combat.js` 戦闘
 - `src/ai.js` AI（戦闘の行動選択、撤退・進行判断、野営での回復）
 - `src/game.js` ゲーム進行（城下町・迷宮・宝箱・全滅・セーブ）

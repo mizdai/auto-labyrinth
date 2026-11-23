@@ -1,8 +1,9 @@
 // 描画：ワイヤーフレームの疑似3D視点、ミニマップ、魔物の簡易スプライト
-import { W, H, DX, DY, WALL, DOOR } from './dungeon.js';
+import { W, H, DX, DY, WALL, DOOR, SEAL } from './dungeon.js';
 
 const LINE = '#d8e0e8';
 const DOORC = '#e8c060';
+const SEALC = '#c05050';   // 封印された近道の扉
 const DIM = '#5a6470';
 
 // ---- 透視投影による3D表示 ----
@@ -61,7 +62,7 @@ export function drawView(ctx, game, size, cam = poseOf(game)) {
         // 壁の両端点
         const [x1, y1, x2, y2] = d === 0 ? [x, y, x + 1, y] : d === 2 ? [x, y + 1, x + 1, y + 1] : d === 3 ? [x, y, x, y + 1] : [x + 1, y, x + 1, y + 1];
         let kind = null;
-        if (w !== 0) kind = (dark && otherDark) ? null : (w === DOOR ? 'door' : 'wall');
+        if (w !== 0) kind = (dark && otherDark) ? null : (w === DOOR ? 'door' : w === SEAL ? 'seal' : 'wall');
         else if (dark !== isDark(nx, ny) && F.inside(nx, ny)) kind = 'fog';   // 暗闇との境目
         if (!kind) continue;
         items.push({ kind, x1, y1, x2, y2, dist: dist2((x1 + x2) / 2, (y1 + y2) / 2, ex, ey) });
@@ -75,7 +76,7 @@ export function drawView(ctx, game, size, cam = poseOf(game)) {
   // 遠いものから描く（手前の壁が奥を塗りつぶす）
   items.sort((a, b) => b.dist - a.dist);
   for (const it of items) {
-    if (it.kind === 'mark') { drawMark(ctx, it, toCam, proj, size, cam.a); continue; }
+    if (it.kind === 'mark') { drawMark(ctx, it, toCam, proj); continue; }
     const quad = [toCam(it.x1, it.y1, 0), toCam(it.x2, it.y2, 0), toCam(it.x2, it.y2, 1), toCam(it.x1, it.y1, 1)];
     const poly = clipNear(quad);
     if (poly.length < 3) continue;
@@ -87,13 +88,14 @@ export function drawView(ctx, game, size, cam = poseOf(game)) {
     ctx.fill();
     ctx.strokeStyle = it.kind === 'fog' ? '#1c2230' : LINE;
     ctx.stroke();
-    if (it.kind === 'door') {
-      // 扉の枠（壁面上の u=0.25〜0.75、高さ0〜0.8）
+    if (it.kind === 'door' || it.kind === 'seal') {
+      // 扉の枠（壁面上の u=0.25〜0.75、高さ0〜0.8）。封印扉は赤く、×印の閂つき
       const P = (u, h) => toCam(it.x1 + (it.x2 - it.x1) * u, it.y1 + (it.y2 - it.y1) * u, h);
-      ctx.strokeStyle = DOORC;
+      ctx.strokeStyle = it.kind === 'seal' ? SEALC : DOORC;
       strokeSeg(ctx, P(0.25, 0), P(0.25, 0.8), proj);
       strokeSeg(ctx, P(0.25, 0.8), P(0.75, 0.8), proj);
       strokeSeg(ctx, P(0.75, 0.8), P(0.75, 0), proj);
+      if (it.kind === 'seal') { strokeSeg(ctx, P(0.25, 0), P(0.75, 0.8), proj); strokeSeg(ctx, P(0.25, 0.8), P(0.75, 0), proj); }
       ctx.strokeStyle = LINE;
     }
   }
@@ -124,80 +126,18 @@ function strokeSeg(ctx, a, b, proj) {
   ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
 }
 
-// 床・天井の印。上り階段は天井に、下り階段は床に、四角い開口部と段差を線で描く
-function drawMark(ctx, it, toCam, proj, size, camA) {
-  const up = it.type === 'up';
-  const h0 = up ? 1 : 0;
+// 床・天井の印：上り階段は天井に□、下り階段は床に□、ボスは床に赤い□
+function drawMark(ctx, it, toCam, proj) {
+  const h0 = it.type === 'up' ? 1 : 0;
   const col = it.type === 'boss' ? '#e05050' : '#80c0ff';
-  const P = (u, v, h) => toCam(it.x + u, it.y + v, h);
-  // 開口部の四角
-  const poly = clipNear([P(0.2, 0.2, h0), P(0.8, 0.2, h0), P(0.8, 0.8, h0), P(0.2, 0.8, h0)]);
+  const poly = clipNear([[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]].map(([u, v]) => toCam(it.x + u, it.y + v, h0)));
   if (poly.length < 3) return;
   const pts = poly.map(proj);
   ctx.beginPath();
   pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
   ctx.closePath();
-  ctx.fillStyle = '#000';
-  ctx.fill();
   ctx.strokeStyle = col;
   ctx.stroke();
-  if (it.type !== 'boss') {
-    // 段差：開口部から4段（上りは天井の上へ、下りは床の下へ）
-    // 視点の向きに合わせて段を並べる。t：手前0→奥1、s：左右0→1
-    const fd = ((Math.round(camA / (Math.PI / 2)) % 4) + 4) % 4;
-    const Q = (t, sl, hh) => {
-      const f = 0.6 * t, r = 0.6 * sl;     // 手前の縁からの奥行き、左の縁からの距離
-      switch (fd) {
-        case 0: return P(0.2 + r, 0.8 - f, hh);   // 北向き（奥が北、右が東）
-        case 2: return P(0.8 - r, 0.2 + f, hh);   // 南向き
-        case 1: return P(0.2 + f, 0.2 + r, hh);   // 東向き（奥が東、右が南）
-        default: return P(0.8 - f, 0.8 - r, hh);  // 西向き
-      }
-    };
-    const prev = ctx.lineWidth;
-    ctx.lineWidth = Math.max(1, prev * 0.8);
-    // 面を黒で塗ってから縁取る（奥の線が透けないように）
-    const face = (a, b, c, d) => {
-      const poly2 = clipNear([a, b, c, d]);
-      if (poly2.length < 3) return;
-      const q = poly2.map(proj);
-      ctx.beginPath();
-      q.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
-      ctx.closePath();
-      ctx.fillStyle = '#000'; ctx.fill(); ctx.stroke();
-    };
-    if (up) {
-      // 上り：手前の床から、奥で天井の開口部へ届く階段（区画の中に置く）
-      const n = 5;
-      for (let k = n - 1; k >= 0; k--) {                 // 奥の段から手前へ描く
-        const t0 = k / n, t1 = (k + 1) / n, hb = k / n, ht = (k + 1) / n;
-        face(Q(t0, 0, ht), Q(t1, 0, ht), Q(t1, 1, ht), Q(t0, 1, ht));   // 踏み面
-        face(Q(t0, 0, hb), Q(t0, 1, hb), Q(t0, 1, ht), Q(t0, 0, ht));   // 蹴上げ
-      }
-    } else {
-      // 下り：床の開口部から、奥の縁を起点に手前へ向かって下りていく段
-      // （穴の外にはみ出して見えるが、階段として読み取りやすいので切り抜かない）
-      const n = 4, dh = 0.15;
-      const prof = [];
-      for (let k = 0; k < n; k++) {
-        const t = 1 - k / n;
-        prof.push([t, h0 - dh * k], [t, h0 - dh * (k + 1)]);
-      }
-      prof.push([0, h0 - dh * n]);
-      for (let i = 0; i < prof.length; i++) {
-        const [t, hh] = prof[i];
-        strokeSeg(ctx, Q(t, 0, hh), Q(t, 1, hh), proj);
-        if (i > 0) for (const sl of [0, 1]) strokeSeg(ctx, Q(prof[i - 1][0], sl, prof[i - 1][1]), Q(t, sl, hh), proj);
-      }
-    }
-    ctx.lineWidth = prev;
-    // 開口部の縁を段の線の上から描き直す
-    ctx.strokeStyle = col;
-    ctx.beginPath();
-    pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
-    ctx.closePath();
-    ctx.stroke();
-  }
   ctx.strokeStyle = LINE;
 }
 
@@ -258,15 +198,15 @@ export function drawMap(ctx, game, size) {
       if (d === 1) { ctx.moveTo(x0 + cs, y0); ctx.lineTo(x0 + cs, y0 + cs); }
       if (d === 2) { ctx.moveTo(x0, y0 + cs); ctx.lineTo(x0 + cs, y0 + cs); }
       if (d === 3) { ctx.moveTo(x0, y0); ctx.lineTo(x0, y0 + cs); }
-      if (w === DOOR) doors.push([x, y, d]);
+      if (w === DOOR || w === SEAL) doors.push([x, y, d, w]);
     }
   }
   ctx.stroke();
   // 扉：壁を横切る2本の短い線（縦の壁なら「＝」、横の壁なら「‖」）
-  ctx.strokeStyle = DOORC;
-  ctx.beginPath();
   const half = cs * 0.3, gap = Math.max(lw * 1.5, cs * 0.12);
-  for (const [x, y, d] of doors) {
+  for (const [x, y, d, w] of doors) {
+    ctx.strokeStyle = w === SEAL ? SEALC : DOORC;
+    ctx.beginPath();
     const x0 = x * cs, y0 = y * cs;
     if (d === 0 || d === 2) {          // 横の壁
       const wy = d === 0 ? y0 : y0 + cs, mx = x0 + cs / 2;
@@ -275,8 +215,8 @@ export function drawMap(ctx, game, size) {
       const wx = d === 3 ? x0 : x0 + cs, my = y0 + cs / 2;
       for (const o of [-gap, gap]) { ctx.moveTo(wx - half, my + o); ctx.lineTo(wx + half, my + o); }
     }
+    ctx.stroke();
   }
-  ctx.stroke();
   // 現在地
   const px = (game.x + 0.5) * cs, py = (game.y + 0.5) * cs;
   ctx.fillStyle = '#40ff80';

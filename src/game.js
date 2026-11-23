@@ -6,7 +6,7 @@ import {
   createCharacter, isAlive, canAct, restoreMP, tryLevelUp, itemScore, canEquip,
   canCast, roleOf, getNextId, setNextId, maxSlots,
 } from './character.js';
-import { getFloor, findPath, W, H, DX, DY, DIR_NAMES, MAX_FLOOR } from './dungeon.js';
+import { getFloor, findPath, W, H, DX, DY, DIR_NAMES, MAX_FLOOR, MAP_VERSION } from './dungeon.js';
 import { battle, makeEncounter, bossEncounter, damageChar } from './combat.js';
 import {
   shouldReturn, targetFloor, readyFor, campPlan, partyCondition, policy, partyLevel, recommendedLevel,
@@ -30,6 +30,7 @@ export class Game {
     this.gold = 0; this.bag = []; this.stock = {};
     this.location = 'town'; this.floor = 0; this.x = 0; this.y = H - 1; this.dir = 0;
     this.known = {}; this.lairsCleared = []; this.lairsFled = []; this.deepest = 1;
+    this.shortcuts = [];   // 近道を開通させた階
     this.mode = 'explore';
     this.cleared = false;
     this.settings = { ...DEFAULT_SETTINGS };
@@ -75,7 +76,7 @@ export class Game {
     const known = {};
     for (const [f, arr] of Object.entries(this.known)) known[f] = Array.from(arr).join('');
     return JSON.stringify({
-      v: 1, seed: this.seed, party: this.party, reserve: this.reserve, gold: this.gold, bag: this.bag, stock: this.stock,
+      v: 1, mapVersion: MAP_VERSION, shortcuts: this.shortcuts, seed: this.seed, party: this.party, reserve: this.reserve, gold: this.gold, bag: this.bag, stock: this.stock,
       location: this.location, floor: this.floor, x: this.x, y: this.y, dir: this.dir, known, lairsCleared: this.lairsCleared, lairsFled: this.lairsFled,
       deepest: this.deepest, mode: this.mode, cleared: this.cleared, settings: this.settings, stats: this.stats,
       logs: this.logs.slice(-60), nextId: getNextId(), rng: R.s,
@@ -90,7 +91,16 @@ export class Game {
       deepest: d.deepest || 1, mode: d.mode || 'explore', cleared: !!d.cleared,
       settings: { ...DEFAULT_SETTINGS, ...d.settings }, stats: { ...g.stats, ...d.stats }, logs: d.logs || [],
     });
-    for (const [f, s] of Object.entries(d.known || {})) g.known[f] = Uint8Array.from(s.split('').map(Number));
+    if (d.mapVersion === MAP_VERSION) {
+      for (const [f, s] of Object.entries(d.known || {})) g.known[f] = Uint8Array.from(s.split('').map(Number));
+      g.shortcuts = d.shortcuts || [];
+      for (const f of g.shortcuts) getFloor(g.seed, f).openShortcut();
+    } else {
+      // 迷宮の作りが変わった古いセーブ：地図の記録を捨てて城下町から再開
+      g.lairsCleared = []; g.lairsFled = [];
+      if (g.location === 'dungeon') { g.location = 'town'; g.floor = 0; }
+      g.log('迷宮の構造が変わったため、地図の記録を消して城下町から再開します。', 'sys');
+    }
     setNextId(d.nextId || 1000);
     if (d.rng) R.s = d.rng;
     return g;
@@ -435,6 +445,7 @@ export class Game {
         stuck++;
         if (stuck > 3) { // 行き先が見つからない：ランダムに歩く
           const dirs = [0, 1, 2, 3].filter(d => F.passable(this.x, this.y, d));
+          if (!dirs.length) { this.x = F.up.x; this.y = F.up.y; continue; } // 念のため：閉じ込められたら階段へ
           path = [R.pick(dirs)];
           stuck = 0;
         } else { this.lastWander = null; continue; }
@@ -466,6 +477,19 @@ export class Game {
       // 毒
       if (this.stats.steps % 4 === 0) for (const c of this.party) if (c.poison && isAlive(c)) { c.hp -= 1; if (c.hp <= 0) { c.hp = 0; c.status = 'dead'; c.poison = false; this.log(`${c.name}は毒で力尽きた…`, 'bad'); yield 1; } }
 
+      // 下り階段のある部屋に入ったら、近道の扉を開ける
+      if (F.shortcut && !this.shortcuts.includes(this.floor) && F.cell(this.x, this.y).room >= 0
+          && F.cell(this.x, this.y).room === F.cell(F.shortcut.x, F.shortcut.y).room) {
+        F.openShortcut();
+        this.shortcuts.push(this.floor);
+        // 近道の通路は扉の向こうに見通せるので、地図に載せる
+        for (const p of F.shortcutPath || []) known[p.y * W + p.x] = 1;
+        this.log('部屋の奥に閂のかかった扉がある。閂を外した。', 'sys');
+        yield 1;
+        this.log('上り階段への近道が開通した！', 'good');
+        yield 2;
+      }
+
       // マスのイベント
       const cell = F.cell(this.x, this.y);
       let res = null;
@@ -475,7 +499,7 @@ export class Game {
         yield 2;
       } else if (cell.type === 'teleport') {
         this.log('床の魔法陣が光った！ どこかへ飛ばされた。', 'bad');
-        this.x = R.int(W); this.y = R.int(H);
+        { const p = R.pick(F.openCells()); this.x = p.x; this.y = p.y; }
         known[this.y * W + this.x] = 1;
         yield 2;
         continue;
@@ -542,7 +566,8 @@ export class Game {
     if (lair.length) return { goal: (x, y) => lair.some(l => l.x === x && l.y === y), label: 'lair', avoidBoss: true };
     if (!this.lastWander || (this.lastWander.x === this.x && this.lastWander.y === this.y)) {
       // 地上へ戻ってレベルアップが必要か
-      this.lastWander = { x: R.int(W), y: R.int(H) };
+      const knownCells = F.openCells().filter(p => isKnown(p.x, p.y));
+      this.lastWander = knownCells.length ? R.pick(knownCells) : { x: F.up.x, y: F.up.y };
       // 全玄室を掃除したら玄室を復活させる（いったん階を離れる代わり）
       this.lairsCleared = [];
     }
@@ -696,7 +721,7 @@ export class Game {
         case 'ガス': for (const c of all) if (!R.chance(c.stats.luk * 0.03)) c.poison = true; this.log('毒ガスが広がった。', 'bad'); break;
         case '爆弾': for (const c of all) damageChar(this, c, R.chance(c.stats.luk * 0.03) ? R.dice(floor, 3) : R.dice(floor, 6)); break;
         case 'しびれ針': opener.status = 'paralyzed'; this.log(`${opener.name}は麻痺した。`, 'bad'); break;
-        case 'テレポーター': this.x = R.int(W); this.y = R.int(H); this.knownMap()[this.y * W + this.x] = 1; this.log('どこかへ飛ばされた！', 'bad'); yield 1; return;
+        case 'テレポーター': { const p = R.pick(this.F.openCells()); this.x = p.x; this.y = p.y; } this.knownMap()[this.y * W + this.x] = 1; this.log('どこかへ飛ばされた！', 'bad'); yield 1; return;
         case '術者殺し': for (const c of all) if ((maxSlots(c).mage[0] || maxSlots(c).priest[0]) && !R.chance(c.stats.luk * 0.03)) { c.status = 'paralyzed'; this.log(`${c.name}は麻痺した。`, 'bad'); } break;
         case '警報': { yield 1; const res = yield* battle(this, makeEncounter(floor)); if (res.result === 'wipe') { yield* this.wipe(); return; } break; }
       }
