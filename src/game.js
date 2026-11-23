@@ -6,7 +6,7 @@ import {
   createCharacter, isAlive, canAct, restoreMP, tryLevelUp, itemScore, canEquip,
   canCast, roleOf, getNextId, setNextId, maxSlots,
 } from './character.js';
-import { getFloor, findPath, W, H, DX, DY, DIR_NAMES, MAX_FLOOR, MAP_VERSION } from './dungeon.js';
+import { getFloor, findPath, W, H, DX, DY, DIR_NAMES, MAX_FLOOR, MAP_VERSION, THEMES } from './dungeon.js';
 import { battle, makeEncounter, bossEncounter, damageChar } from './combat.js';
 import {
   shouldReturn, targetFloor, readyFor, campPlan, partyCondition, policy, partyLevel, recommendedLevel,
@@ -587,7 +587,7 @@ export class Game {
       this.log(`階段を上った。地下${this.floor}階。`, 'sys');
     } else {
       this.floor++;
-      if (this.floor > this.deepest) { this.deepest = this.floor; this.log(`地下${this.floor}階に初めて足を踏み入れた。`, 'good'); }
+      if (this.floor > this.deepest) { this.deepest = this.floor; this.log(`地下${this.floor}階に初めて足を踏み入れた。（${THEMES[this.F.theme] || ''}）`, 'good'); }
       else this.log(`階段を下りた。地下${this.floor}階。`, 'sys');
     }
     this.lairsCleared = [];

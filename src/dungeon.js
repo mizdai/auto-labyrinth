@@ -7,7 +7,7 @@ export const W = 20, H = 20;
 export const DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];
 export const DIR_NAMES = ['北', '東', '南', '西'];
 export const OPEN = 0, WALL = 1, DOOR = 2, SEAL = 3;  // SEAL: 近道の扉（開通するまで通れない）
-export const MAP_VERSION = 2;
+export const MAP_VERSION = 3;
 export const MAX_FLOOR = 10;
 
 export class Floor {
@@ -82,61 +82,70 @@ export function getFloor(worldSeed, floor) {
   return cache.get(key);
 }
 
+// フロアのテーマ
+//  A: 直線の通路の横に部屋が並ぶ   B: 少し入り組んだ通路と部屋   C: 幅の広い通路
+//  D: 通路少なめ、部屋どうしが直接つながる   E: 1本の通路に各部屋が1か所でつながる
+//  F: 通路→部屋→通路→部屋…と順番に進む（最終フロア限定）
+export const THEMES = {
+  A: '直線の通路と部屋', B: '入り組んだ通路', C: '広い通路', D: '部屋の連なり', E: '一本の通路', F: '順路の迷宮',
+};
+export function floorTheme(worldSeed, floor) {
+  if (floor <= 1) return 'A';
+  if (floor >= MAX_FLOOR) return 'F';
+  const prev = floorTheme(worldSeed, floor - 1);
+  const r = new Rng((worldSeed * 31 + floor * 977 + 13) >>> 0);
+  return r.pick(['A', 'B', 'C', 'D', 'E'].filter(t => t !== prev));
+}
+
 function generateFloor(worldSeed, floor) {
   // 上り階段の位置は1つ上の階の下り階段と一致させる
   const up = floor === 1 ? { x: 0, y: H - 1 } : getFloor(worldSeed, floor - 1).down;
+  const theme = floorTheme(worldSeed, floor);
   const rng = new Rng((worldSeed * 7919 + floor * 104729) >>> 0);
-  for (let attempt = 0; attempt < 30; attempt++) {
-    const F = tryGenerate(rng, floor, up, attempt < 20);
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const F = tryGenerate(rng, floor, up, theme, attempt < 40);
     if (F) return F;
   }
-  return tryGenerate(rng, floor, up, false);
+  // どうしても作れない場合は、入り組んだ通路のテーマで作る
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const F = tryGenerate(rng, floor, up, 'B', false);
+    if (F) return F;
+  }
+  throw new Error('floor generation failed');
 }
 
-function tryGenerate(rng, floor, up, needShortcut) {
+function tryGenerate(rng, floor, up, theme, needShortcut) {
   const F = new Floor(floor);
-
-  // 1. 部屋。最初の部屋は上り階段を含むように置く
+  F.theme = theme;
   const rooms = [];
-  const overlaps = (x, y, w, h) => rooms.some(r => x < r.x + r.w + 1 && x + w + 1 > r.x && y < r.y + r.h + 1 && y + h + 1 > r.y);
-  {
-    const w = rng.range(2, 3), h = rng.range(2, 3);
-    const x = Math.max(0, Math.min(W - w, up.x - rng.int(w)));
-    const y = Math.max(0, Math.min(H - h, up.y - rng.int(h)));
-    rooms.push({ x, y, w, h });
-  }
-  const nRooms = rng.range(7, 10);
-  for (let t = 0; t < 400 && rooms.length < nRooms; t++) {
-    const w = rng.range(2, 5), h = rng.range(2, 4);
-    const x = rng.range(0, W - w), y = rng.range(0, H - h);
-    if (overlaps(x, y, w, h)) continue;
-    rooms.push({ x, y, w, h });
-  }
-  rooms.forEach((r, i) => {
+  const idx = (x, y) => y * W + x;
+  const isRoom = (x, y) => F.cell(x, y).room >= 0;
+  const isRock = (x, y) => F.inside(x, y) && !isRoom(x, y) && !F.isOpenCell(x, y);
+  const overlaps = (x, y, w, h, margin = 1) => rooms.some(r => x < r.x + r.w + margin && x + w + margin > r.x && y < r.y + r.h + margin && y + h + margin > r.y);
+  const rectRock = (x, y, w, h) => {
+    if (x < 0 || y < 0 || x + w > W || y + h > H) return false;
+    for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) if (!isRock(xx, yy)) return false;
+    return true;
+  };
+  const addRoom = (r) => {
+    const i = rooms.length;
+    rooms.push(r);
     for (let yy = r.y; yy < r.y + r.h; yy++) for (let xx = r.x; xx < r.x + r.w; xx++) {
       F.cell(xx, yy).room = i;
       if (xx < r.x + r.w - 1) F.setWall(xx, yy, 1, OPEN);
       if (yy < r.y + r.h - 1) F.setWall(xx, yy, 2, OPEN);
     }
-  });
-
-  // 2. 通路：L字（曲がり角1回）の経路で区画を掘る
-  const lPath = (a, b, horizFirst) => {
-    const path = [{ x: a.x, y: a.y }];
-    let x = a.x, y = a.y;
-    const stepX = () => { while (x !== b.x) { x += Math.sign(b.x - x); path.push({ x, y }); } };
-    const stepY = () => { while (y !== b.y) { y += Math.sign(b.y - y); path.push({ x, y }); } };
-    if (horizFirst) { stepX(); stepY(); } else { stepY(); stepX(); }
-    return path;
+    return i;
   };
   const dirBetween = (a, b) => b.y < a.y ? 0 : b.x > a.x ? 1 : b.y > a.y ? 2 : 3;
+  // 経路に沿って壁を開ける。部屋の出入りは扉。sealRoom に入る最初の境目は封印扉
   const carve = (path, sealRoom = -1) => {
     let sealed = null;
     for (let i = 1; i < path.length; i++) {
       const a = path[i - 1], b = path[i];
       const d = dirBetween(a, b);
       const ra = F.cell(a.x, a.y).room, rb = F.cell(b.x, b.y).room;
-      if (ra >= 0 && ra === rb) continue;                      // 部屋の中
+      if (ra >= 0 && ra === rb) continue;
       if (sealRoom >= 0 && rb === sealRoom && ra !== sealRoom && !sealed) {
         F.setWall(a.x, a.y, d, SEAL); sealed = { x: b.x, y: b.y, d: (d + 2) % 4 }; continue;
       }
@@ -145,65 +154,322 @@ function tryGenerate(rng, floor, up, needShortcut) {
     }
     return sealed;
   };
+  // 幅2の通路として掘る（進行方向の右隣の列も通路にする）
+  const carveWide = (path) => {
+    const set = new Set();
+    const add = (x, y) => { if (F.inside(x, y) && !isRoom(x, y)) set.add(idx(x, y)); };
+    for (let i = 0; i < path.length; i++) {
+      const p = path[i], q = path[Math.min(path.length - 1, i + 1)], o = path[Math.max(0, i - 1)];
+      add(p.x, p.y);
+      const horiz = (q.y === p.y && q.x !== p.x) || (o.y === p.y && o.x !== p.x);
+      const vert = (q.x === p.x && q.y !== p.y) || (o.x === p.x && o.y !== p.y);
+      if (horiz) add(p.x, p.y + 1 < H ? p.y + 1 : p.y - 1);
+      if (vert) add(p.x + 1 < W ? p.x + 1 : p.x - 1, p.y);
+      if (horiz && vert) add(p.x + 1 < W ? p.x + 1 : p.x - 1, p.y + 1 < H ? p.y + 1 : p.y - 1);
+    }
+    for (const k of set) {
+      const x = k % W, y = (k / W) | 0;
+      if (set.has(idx(x + 1, y)) && x + 1 < W) F.setWall(x, y, 1, OPEN);
+      if (set.has(idx(x, y + 1)) && y + 1 < H) F.setWall(x, y, 2, OPEN);
+    }
+    carve(path);
+  };
+  const lPath = (a, b, horizFirst) => {
+    const path = [{ x: a.x, y: a.y }];
+    let x = a.x, y = a.y;
+    const stepX = () => { while (x !== b.x) { x += Math.sign(b.x - x); path.push({ x, y }); } };
+    const stepY = () => { while (y !== b.y) { y += Math.sign(b.y - y); path.push({ x, y }); } };
+    if (horizFirst) { stepX(); stepY(); } else { stepY(); stepX(); }
+    return path;
+  };
+  // 岩盤だけを通る経路（曲がるほど高コスト）。from は開始区画の集合、goal は到達判定
+  const route = (fromCells, goal, pass) => {
+    const INF = 1e9, cost = new Float64Array(W * H * 4).fill(INF), prev = new Int32Array(W * H * 4).fill(-1);
+    const open = [];
+    for (const c of fromCells) for (let d = 0; d < 4; d++) { const s = idx(c.x, c.y) * 4 + d; cost[s] = 0; open.push(s); }
+    let found = -1;
+    while (open.length) {
+      let bi = 0; for (let i = 1; i < open.length; i++) if (cost[open[i]] < cost[open[bi]]) bi = i;
+      const s = open[bi]; open[bi] = open[open.length - 1]; open.pop();
+      const ci = s >> 2, d0 = s & 3, x = ci % W, y = (ci / W) | 0;
+      if (goal(x, y) && prev[s] >= 0) { found = s; break; }
+      for (let d = 0; d < 4; d++) {
+        const nx = x + DX[d], ny = y + DY[d];
+        if (!F.inside(nx, ny)) continue;
+        if (!goal(nx, ny) && !pass(nx, ny)) continue;
+        const ns = idx(nx, ny) * 4 + d;
+        const c = cost[s] + 1 + (d === d0 ? 0 : 3) + rng.next() * 0.3;
+        if (c < cost[ns]) { cost[ns] = c; prev[ns] = s; open.push(ns); }
+      }
+    }
+    if (found < 0) return null;
+    const path = [];
+    for (let s = found; s >= 0; s = prev[s]) path.unshift({ x: (s >> 2) % W, y: ((s >> 2) / W) | 0 });
+    return path;
+  };
+  const roomCells = (r) => { const out = []; for (let yy = r.y; yy < r.y + r.h; yy++) for (let xx = r.x; xx < r.x + r.w; xx++) out.push({ x: xx, y: yy }); return out; };
   const roomCell = (r) => ({ x: r.x + rng.int(r.w), y: r.y + rng.int(r.h) });
   const center = (r) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
   const md = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-  // 最小全域木でつなぎ、いくつか輪を足す
-  const inTree = new Set([0]);
-  const edges = [];
-  while (inTree.size < rooms.length) {
-    let best = null;
-    for (const i of inTree) for (let j = 0; j < rooms.length; j++) {
-      if (inTree.has(j)) continue;
-      const dd = md(center(rooms[i]), center(rooms[j]));
-      if (!best || dd < best[2]) best = [i, j, dd];
+  const placeRooms = (n, wMin, wMax, hMin, hMax, tries = 400) => {
+    for (let t = 0; t < tries && rooms.length < n; t++) {
+      const w = rng.range(wMin, wMax), h = rng.range(hMin, hMax);
+      const x = rng.range(0, W - w), y = rng.range(0, H - h);
+      if (overlaps(x, y, w, h) || !rectRock(x, y, w, h)) continue;
+      addRoom({ x, y, w, h });
     }
-    inTree.add(best[1]); edges.push(best);
-  }
-  const extra = rng.range(1, 3);
-  for (let k = 0; k < extra; k++) {
-    const i = rng.int(rooms.length), j = rng.int(rooms.length);
-    if (i !== j) edges.push([i, j, 0]);
-  }
-  for (const [i, j] of edges) carve(lPath(roomCell(rooms[i]), roomCell(rooms[j]), rng.chance(0.5)));
+  };
+  const mstEdges = () => {
+    const inTree = new Set([0]), edges = [];
+    while (inTree.size < rooms.length) {
+      let best = null;
+      for (const i of inTree) for (let j = 0; j < rooms.length; j++) {
+        if (inTree.has(j)) continue;
+        const dd = md(center(rooms[i]), center(rooms[j]));
+        if (!best || dd < best[2]) best = [i, j, dd];
+      }
+      inTree.add(best[1]); edges.push(best);
+    }
+    return edges;
+  };
+  // 最初の部屋は上り階段を含むように置く
+  const firstRoom = (wMin = 2, wMax = 3, hMin = 2, hMax = 3) => {
+    const w = rng.range(wMin, wMax), h = rng.range(hMin, hMax);
+    const x = Math.max(0, Math.min(W - w, up.x - rng.int(w)));
+    const y = Math.max(0, Math.min(H - h, up.y - rng.int(h)));
+    addRoom({ x, y, w, h });
+  };
+  let order = null;   // F テーマ：部屋を通る順番
 
-  // 3. 階段：上り階段から最も遠い部屋に下り階段（最下層はボス）
+  switch (theme) {
+    case 'A': {
+      // 直線の通路（横1本、ときどき縦1本も）と、その両脇に並ぶ部屋
+      firstRoom();
+      const spines = [];
+      const row = rng.range(6, 13);
+      spines.push({ horiz: true, at: row });
+      if (rng.chance(0.6)) spines.push({ horiz: false, at: rng.range(6, 13) });
+      for (const sp of spines) {
+        const path = [];
+        for (let k = 1; k < 19; k++) path.push(sp.horiz ? { x: k, y: sp.at } : { x: sp.at, y: k });
+        carve(path);
+      }
+      const onSpine = (x, y) => spines.some(sp => sp.horiz ? (y === sp.at && x >= 1 && x <= 18) : (x === sp.at && y >= 1 && y <= 18));
+      // 通路に面して部屋を並べ、通路との境に扉
+      for (const sp of spines) for (const side of [-1, 1]) {
+        let k = rng.range(1, 3);
+        while (k < 18) {
+          const len = rng.range(2, 4), depth = rng.range(2, 3);
+          let r;
+          if (sp.horiz) r = { x: k, y: side < 0 ? sp.at - depth : sp.at + 1, w: len, h: depth };
+          else r = { x: side < 0 ? sp.at - depth : sp.at + 1, y: k, w: depth, h: len };
+          if (r.x >= 0 && r.y >= 0 && r.x + r.w <= W && r.y + r.h <= H && !overlaps(r.x, r.y, r.w, r.h) && rectRock(r.x, r.y, r.w, r.h)) {
+            const i = addRoom(r);
+            const along = rng.range(0, len - 1);
+            if (sp.horiz) { const x = r.x + along, y = side < 0 ? sp.at - 1 : sp.at + 1; F.setWall(x, y, side < 0 ? 2 : 0, DOOR); }
+            else { const y = r.y + along, x = side < 0 ? sp.at - 1 : sp.at + 1; F.setWall(x, y, side < 0 ? 1 : 3, DOOR); }
+            void i;
+          }
+          k += len + rng.range(1, 2);
+        }
+      }
+      // 階段の部屋を通路につなぐ（すでに接していれば不要）
+      const r0 = rooms[0];
+      if (!roomCells(r0).some(c => [0, 1, 2, 3].some(d => F.passable(c.x, c.y, d) && !isRoom(c.x + DX[d], c.y + DY[d])))) {
+        const p = route(roomCells(r0), onSpine, isRock);
+        if (!p) return null;
+        carve(p);
+      }
+      if (rooms.length < 6) return null;
+      break;
+    }
+    case 'B': {
+      // 少し入り組んだ通路：中継点を経由する曲がりの多い通路、輪、行き止まり
+      firstRoom();
+      placeRooms(rng.range(7, 9), 2, 4, 2, 3);
+      if (rooms.length < 6) return null;
+      const edges = mstEdges();
+      for (let k = rng.range(3, 5); k > 0; k--) { const i = rng.int(rooms.length), j = rng.int(rooms.length); if (i !== j) edges.push([i, j, 0]); }
+      for (const [i, j] of edges) {
+        const a = roomCell(rooms[i]), b = roomCell(rooms[j]);
+        const wp = { x: rng.range(Math.min(a.x, b.x), Math.max(a.x, b.x)), y: rng.range(Math.min(a.y, b.y), Math.max(a.y, b.y)) };
+        const p1 = lPath(a, wp, rng.chance(0.5)), p2 = lPath(wp, b, rng.chance(0.5));
+        carve([...p1, ...p2.slice(1)]);
+      }
+      // 行き止まりの枝道
+      for (let k = rng.range(2, 4); k > 0; k--) {
+        const cells = F.openCells().filter(c => !isRoom(c.x, c.y));
+        if (!cells.length) break;
+        let { x, y } = rng.pick(cells);
+        const d = rng.int(4), len = rng.range(2, 5);
+        const path = [{ x, y }];
+        for (let s = 0; s < len; s++) { x += DX[d]; y += DY[d]; if (!isRock(x, y)) break; path.push({ x, y }); }
+        if (path.length > 1) carve(path);
+      }
+      break;
+    }
+    case 'C': {
+      // 幅の広い通路（2列）で部屋をつなぐ
+      firstRoom();
+      placeRooms(rng.range(5, 7), 2, 4, 2, 3);
+      if (rooms.length < 5) return null;
+      const edges = mstEdges();
+      if (rng.chance(0.7)) { const i = rng.int(rooms.length), j = rng.int(rooms.length); if (i !== j) edges.push([i, j, 0]); }
+      for (const [i, j] of edges) carveWide(lPath(roomCell(rooms[i]), roomCell(rooms[j]), rng.chance(0.5)));
+      break;
+    }
+    case 'D': {
+      // 部屋が主体：区画を分割して部屋で埋め、部屋どうしを短い通り道（1区画）や扉で直接つなぐ
+      const leaves = [];
+      const split = (x, y, w, h, depth) => {
+        const canH = w >= 7, canV = h >= 7;
+        if ((!canH && !canV) || (depth > 2 && w <= 6 && h <= 6 && rng.chance(0.5))) { leaves.push({ x, y, w, h }); return; }
+        const horizCut = canV && (!canH || (h > w ? true : h < w ? false : rng.chance(0.5)));
+        if (horizCut) { const c = rng.range(3, h - 4); split(x, y, w, c + 1, depth + 1); split(x, y + c + 1, w, h - c - 1, depth + 1); }
+        else { const c = rng.range(3, w - 4); split(x, y, c + 1, h, depth + 1); split(x + c + 1, y, w - c - 1, h, depth + 1); }
+      };
+      split(0, 0, W + 1, H + 1, 0);   // 右と下の1列は仕切り（岩盤）として使う
+      // 各葉の右端・下端の1列を仕切りとして残し、残りを部屋にする
+      const rects = leaves.map(l => ({ x: l.x, y: l.y, w: l.w - 1, h: l.h - 1 })).filter(r => r.w >= 2 && r.h >= 2);
+      const upRect = rects.find(r => up.x >= r.x && up.x < r.x + r.w && up.y >= r.y && up.y < r.y + r.h);
+      if (!upRect) return null;
+      addRoom(upRect);
+      for (const r of rects) if (r !== upRect) addRoom(r);
+      // 仕切りをはさんで隣り合う部屋を、仕切りの1区画を通り道にしてつなぐ
+      const links = [];
+      for (let i = 0; i < rooms.length; i++) for (let j = i + 1; j < rooms.length; j++) {
+        const a = rooms[i], b = rooms[j];
+        const cands = [];
+        if (a.x + a.w + 1 === b.x || b.x + b.w + 1 === a.x) {       // 左右に隣り合う
+          const gx = a.x + a.w + 1 === b.x ? a.x + a.w : b.x + b.w;
+          for (let y = Math.max(a.y, b.y); y < Math.min(a.y + a.h, b.y + b.h); y++) cands.push([{ x: gx - 1, y }, { x: gx, y }, { x: gx + 1, y }]);
+        }
+        if (a.y + a.h + 1 === b.y || b.y + b.h + 1 === a.y) {       // 上下に隣り合う
+          const gy = a.y + a.h + 1 === b.y ? a.y + a.h : b.y + b.h;
+          for (let x = Math.max(a.x, b.x); x < Math.min(a.x + a.w, b.x + b.w); x++) cands.push([{ x, y: gy - 1 }, { x, y: gy }, { x, y: gy + 1 }]);
+        }
+        if (cands.length) links.push([i, j, cands]);
+      }
+      // 全体がつながるように選び、いくつか輪を足す
+      const parent = rooms.map((_, i) => i);
+      const find = (i) => parent[i] === i ? i : (parent[i] = find(parent[i]));
+      rng.shuffle(links);
+      let extra = rng.range(1, 3);
+      for (const [i, j, cands] of links) {
+        const joined = find(i) !== find(j);
+        if (!joined && extra <= 0) continue;
+        if (!joined) extra--;
+        parent[find(i)] = find(j);
+        const path = rng.pick(cands).filter(c => F.inside(c.x, c.y));
+        if (path.length === 3 && isRock(path[1].x, path[1].y)) carve(path);
+      }
+      if (new Set(rooms.map((_, i) => find(i))).size > 1) return null;
+      break;
+    }
+    case 'E': {
+      // 1本の長い通路に、各部屋が短い枝で1か所だけつながる（輪なし）
+      firstRoom();
+      const r0 = rooms[0];
+      let spine = [];
+      let from = roomCells(r0);
+      const nWp = rng.range(4, 6);
+      for (let k = 0; k < nWp; k++) {
+        const wp = { x: rng.range(1, 18), y: rng.range(1, 18) };
+        const spineSet = new Set(spine.map(c => idx(c.x, c.y)));
+        const p = route(from, (x, y) => x === wp.x && y === wp.y && isRock(x, y), (x, y) => isRock(x, y) && !spineSet.has(idx(x, y)));
+        if (!p) continue;
+        carve(p);
+        spine = spine.concat(p.filter(c => !isRoom(c.x, c.y)));
+        from = [p[p.length - 1]];
+      }
+      if (spine.length < 25) return null;
+      // 部屋をぶら下げる
+      const target = rng.range(6, 8);
+      for (let t = 0; t < 600 && rooms.length < target; t++) {
+        const s = rng.pick(spine), d = rng.int(4), stub = rng.range(1, 2);
+        let x = s.x, y = s.y, ok = true;
+        const path = [{ x, y }];
+        for (let k = 0; k < stub; k++) { x += DX[d]; y += DY[d]; if (!isRock(x, y)) { ok = false; break; } path.push({ x, y }); }
+        if (!ok) continue;
+        const w = rng.range(2, 4), h = rng.range(2, 3);
+        const ex = x + DX[d], ey = y + DY[d];   // 部屋の入口区画
+        let rx, ry;
+        if (d === 0) { rx = ex - rng.int(w); ry = ey - h + 1; }
+        else if (d === 2) { rx = ex - rng.int(w); ry = ey; }
+        else if (d === 1) { rx = ex; ry = ey - rng.int(h); }
+        else { rx = ex - w + 1; ry = ey - rng.int(h); }
+        if (overlaps(rx, ry, w, h) || !rectRock(rx, ry, w, h)) continue;
+        // 枝道・部屋が他の通路に接していないこと（壁は残るので通れないが、見た目を整える）
+        addRoom({ x: rx, y: ry, w, h });
+        path.push({ x: ex, y: ey });
+        carve(path);
+      }
+      if (rooms.length < 5) return null;
+      break;
+    }
+    case 'F': {
+      // 部屋を順番にたどる一本道：通路→部屋→通路→部屋…
+      firstRoom();
+      placeRooms(rng.range(7, 8), 2, 4, 2, 3);
+      if (rooms.length < 6) return null;
+      // 近い順に並べて順路を決める
+      order = [0];
+      const left = new Set(rooms.map((_, i) => i).filter(i => i !== 0));
+      while (left.size) {
+        const last = rooms[order[order.length - 1]];
+        let best = null;
+        for (const j of left) { const dd = md(center(last), center(rooms[j])); if (!best || dd < best[1]) best = [j, dd]; }
+        order.push(best[0]); left.delete(best[0]);
+      }
+      for (let k = 1; k < order.length; k++) {
+        const a = rooms[order[k - 1]], bi = order[k];
+        const p = route(roomCells(a), (x, y) => F.cell(x, y).room === bi, isRock);
+        if (!p) return null;
+        carve(p);
+      }
+      break;
+    }
+  }
+
+  // 3. 階段：上り階段から最も遠い部屋（F は順路の最後の部屋）に下り階段（最下層はボス）
   F.up = { x: up.x, y: up.y };
   F.cell(up.x, up.y).type = 'up';
   const dist = F.distances(up.x, up.y);
-  let downRoom = -1, bestD = -1;
-  rooms.forEach((r, i) => {
-    if (i === 0) return;
-    let dmin = 1e9;
-    for (let yy = r.y; yy < r.y + r.h; yy++) for (let xx = r.x; xx < r.x + r.w; xx++) { const v = dist[yy * W + xx]; if (v >= 0) dmin = Math.min(dmin, v); }
-    if (dmin < 1e9 && dmin > bestD) { bestD = dmin; downRoom = i; }
-  });
+  // すべての部屋に行けること
+  for (const r of rooms) if (dist[idx(r.x, r.y)] < 0) return null;
+  let downRoom = -1;
+  if (order) downRoom = order[order.length - 1];
+  else {
+    let bestD = -1;
+    rooms.forEach((r, i) => {
+      if (i === 0) return;
+      let dmin = 1e9;
+      for (const c of roomCells(r)) dmin = Math.min(dmin, dist[idx(c.x, c.y)]);
+      if (dmin > bestD) { bestD = dmin; downRoom = i; }
+    });
+  }
   if (downRoom < 0) return null;
   const dr = rooms[downRoom];
   let target = null;
-  for (let yy = dr.y; yy < dr.y + dr.h; yy++) for (let xx = dr.x; xx < dr.x + dr.w; xx++) {
-    if (!target || dist[yy * W + xx] > dist[target.y * W + target.x]) target = { x: xx, y: yy };
-  }
+  for (const c of roomCells(dr)) if (!target || dist[idx(c.x, c.y)] > dist[idx(target.x, target.y)]) target = c;
   if (floor < MAX_FLOOR) { F.down = target; F.cell(target.x, target.y).type = 'down'; }
   else { F.boss = target; F.cell(target.x, target.y).type = 'boss'; }
 
-  // 4. 近道：上り階段の部屋から下り階段の部屋へ。下り階段の部屋の入口に封印扉
-  const closedD = F.distances(up.x, up.y)[target.y * W + target.x];
-  if (closedD < 0) return null;
+  // 4. 近道：上り階段の部屋から下り階段の部屋へ、岩盤だけを通る通路。下り階段の部屋の入口に封印扉
+  const closedD = dist[idx(target.x, target.y)];
   let made = false;
-  for (let t = 0; t < 8 && !made; t++) {
+  for (let t = 0; t < 3 && !made; t++) {
+    const p = route(roomCells(rooms[0]), (x, y) => F.cell(x, y).room === downRoom, isRock);
+    if (!p) break;
     const saveH = F.h.slice(), saveV = F.v.slice();
-    const scPath = lPath(roomCell(rooms[0]), roomCell(dr), rng.chance(0.5));
-    const sealed = carve(scPath, downRoom);
-    F.shortcutPath = scPath;
+    const sealed = carve(p, downRoom);
     if (sealed) {
-      const closed = F.distances(up.x, up.y)[target.y * W + target.x];
-      F.shortcut = sealed;
+      F.shortcut = sealed; F.shortcutPath = p;
       F.openShortcut();
-      const open = F.distances(up.x, up.y)[target.y * W + target.x];
+      const open = F.distances(up.x, up.y)[idx(target.x, target.y)];
       F.setWall(sealed.x, sealed.y, sealed.d, SEAL);
-      if (closed >= 0 && open >= 0 && open <= closed - 8) { made = true; break; }
-      F.shortcut = null;
+      if (open >= 0 && open <= closedD - 6) { made = true; break; }
+      F.shortcut = null; F.shortcutPath = null;
     }
     F.h.set(saveH); F.v.set(saveV);
   }
