@@ -246,7 +246,7 @@ function openChar(c) {
   const eq = SLOTS.map(s => `<tr><td>${SLOT_NAMES[s]}</td><td>${c.equip[s] ? ITEMS[c.equip[s].id].name : '―'}</td></tr>`).join('');
   const ms = maxSlots(c);
   // 職業が使える系統は、まだ覚えていないレベルも 0/0 で表示
-  const slots = Object.keys(cl.spells).map(sc => `<tr><td>${SCHOOL_NAMES[sc]}</td><td>${c.mp[sc].map((v, i) => `${ms[sc][i] ? v : 0}/${ms[sc][i]}`).join(' ')}</td></tr>`).join('');
+  const slots = Object.keys(cl.spells).map(sc => `<tr><td>${SCHOOL_NAMES[sc]}</td><td>${c.mp[sc].map((v, i) => `<span class="slot">${ms[sc][i] ? v : 0}/${ms[sc][i]}</span>`).join('')}</td></tr>`).join('');
   const spells = knownSpells(c).map(s => s.name).join('、') || 'なし';
   openModal(`<h2>${c.name}</h2>
   <div>${RACES[c.race].name}・${ALIGN_NAMES[c.align]}・${cl.name}　Lv${c.level}　${c.age}歳</div>

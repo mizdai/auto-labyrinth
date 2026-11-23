@@ -42,3 +42,4 @@ body { overscroll-behavior: none; }
 #modalBody table.sec td { border: none; padding: 1px 0; }
 #modalBody table.sec td:nth-child(odd) { padding-right: 10px; color: #aab; }
 #modalBody table.sec td:nth-child(even) { padding-right: 22px; }
+#modalBody .slot { display: inline-block; margin-right: 0.75em; }
