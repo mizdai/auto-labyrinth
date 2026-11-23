@@ -68,7 +68,7 @@ export function drawView(ctx, game, size, cam = poseOf(game)) {
         items.push({ kind, x1, y1, x2, y2, dist: dist2((x1 + x2) / 2, (y1 + y2) / 2, ex, ey) });
       }
       const c = F.cell(x, y);
-      if (!dark && (c.type === 'up' || c.type === 'down' || c.type === 'boss')) {
+      if (!dark && (c.type === 'up' || c.type === 'down' || c.type === 'boss' || c.type === 'elevator')) {
         items.push({ kind: 'mark', x, y, type: c.type, dist: dist2(x + 0.5, y + 0.5, ex, ey) });
       }
     }
@@ -129,7 +129,7 @@ function strokeSeg(ctx, a, b, proj) {
 // 床・天井の印：上り階段は天井に□、下り階段は床に□、ボスは床に赤い□
 function drawMark(ctx, it, toCam, proj) {
   const h0 = it.type === 'up' ? 1 : 0;
-  const col = it.type === 'boss' ? '#e05050' : '#80c0ff';
+  const col = it.type === 'boss' ? '#e05050' : it.type === 'elevator' ? '#40d0a0' : '#80c0ff';
   const poly = clipNear([[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]].map(([u, v]) => toCam(it.x + u, it.y + v, h0)));
   if (poly.length < 3) return;
   const pts = poly.map(proj);
@@ -181,7 +181,7 @@ export function drawMap(ctx, game, size) {
     ctx.fillStyle = c.dark ? '#1c2230' : '#26303c';
     ctx.fillRect(x * cs, y * cs, cs, cs);
     if (c.type) {
-      const col = { up: '#80c0ff', down: '#80c0ff', lair: '#c08040', pit: '#c04040', teleport: '#a060e0', alarm: '#e0a020', boss: '#ff4040' }[c.type];
+      const col = { up: '#80c0ff', down: '#80c0ff', lair: '#c08040', pit: '#c04040', teleport: '#a060e0', alarm: '#e0a020', boss: '#ff4040', elevator: '#40d0a0' }[c.type];
       if (col) { ctx.fillStyle = col; ctx.fillRect(x * cs + cs * 0.3, y * cs + cs * 0.3, cs * 0.4, cs * 0.4); }
     }
   }

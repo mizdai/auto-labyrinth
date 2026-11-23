@@ -7,7 +7,7 @@ export const W = 20, H = 20;
 export const DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];
 export const DIR_NAMES = ['北', '東', '南', '西'];
 export const OPEN = 0, WALL = 1, DOOR = 2, SEAL = 3;  // SEAL: 近道の扉（開通するまで通れない）
-export const MAP_VERSION = 5;
+export const MAP_VERSION = 6;
 export const MAX_FLOOR = 10;
 
 export class Floor {
@@ -857,6 +857,32 @@ function tryGenerateOpen(rng, floor, up, theme, needShortcut) {
     F.setWall(best.x, best.y, best.d, SEAL);
   } else if (needShortcut) return null;
 
+  // 7. エレベーター：上り階段と下り階段の中間あたりの通路に、壁で囲った1×1の部屋を置く。
+  //    もともと通れた側は扉、通れなかった側は壁のまま（新しい抜け道を作らない）
+  if (floor < MAX_FLOOR) {
+    const d2 = F.distances(up.x, up.y);
+    const total = d2[idx(target.x, target.y)];
+    const cands = [];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const c = F.cell(x, y);
+      if (c.room >= 0 || c.type || c.solid || !F.isOpenCell(x, y)) continue;
+      if (F.shortcut && (F.shortcutPath || []).some(p => p.x === x && p.y === y)) continue;
+      const v = d2[idx(x, y)];
+      if (v < 0) continue;
+      cands.push({ x, y, score: Math.abs(v / Math.max(1, total) - 0.5) });
+    }
+    cands.sort((a, b) => a.score - b.score);
+    const pick = cands.length ? rng.pick(cands.slice(0, Math.max(1, Math.ceil(cands.length * 0.15)))) : null;
+    if (!pick) return null;
+    for (let d = 0; d < 4; d++) {
+      if (!F.inside(pick.x + DX[d], pick.y + DY[d])) continue;
+      const w = F.wall(pick.x, pick.y, d);
+      if (w === OPEN) F.setWall(pick.x, pick.y, d, DOOR);
+    }
+    F.elevator = { x: pick.x, y: pick.y };
+    F.cell(pick.x, pick.y).type = 'elevator';
+  }
+
   F.rooms = rooms;
   decorate(F, rng, floor, up, rooms, null, startRoom);
   return F;
@@ -927,7 +953,7 @@ function decorate(F, rng, floor, up, rooms, order, startRoom) {
       const zx = rng.int(W - 3), zy = rng.int(H - 3), zw = rng.range(2, 4), zh = rng.range(2, 4);
       for (let y = zy; y < Math.min(H, zy + zh); y++) for (let x = zx; x < Math.min(W, zx + zw); x++) {
         const c = F.cell(x, y);
-        if (c.type !== 'up' && c.type !== 'down' && c.type !== 'boss') c.dark = true;
+        if (c.type !== 'up' && c.type !== 'down' && c.type !== 'boss' && c.type !== 'elevator') c.dark = true;
       }
     }
   }

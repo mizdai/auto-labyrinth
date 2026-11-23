@@ -3,7 +3,7 @@
 <title>迷宮表示プレビュー</title>
 <style>body{background:#111;color:#ccc;font:13px sans-serif;margin:8px} canvas{width:100%;max-width:480px;display:block;margin:4px 0 12px;border:1px solid #445}</style>
 </head><body>
-<p>階段の見え方の確認用（開発用ページ）</p>
+<p>階段・エレベーターの見え方の確認用（開発用ページ）</p>
 <div id="out"></div>
 <script type="module">
 import { drawView } from '../src/render.js';
@@ -32,5 +32,6 @@ function show(label, floor, target) {
 const f1 = getFloor(seed, 1), f2 = getFloor(seed, 2);
 show('下り階段（地下1階）', 1, f1.down);
 show('上り階段（地下2階）', 2, f2.up);
+show('エレベーター（地下1階）', 1, f1.elevator);
 </script>
 </body></html>

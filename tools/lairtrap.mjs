@@ -15,6 +15,7 @@ const r = F.rooms[lair.id];
 g.x = r.x; g.y = r.y;
 const k = g.knownMap(); for (let i = 0; i < W * W; i++) k[i] = 1;
 g.lairsCleared = F.lairs.filter(l => l.id !== lair.id).map(l => l.id);
+g.elevators = [1];   // エレベーターは解放済みにして、玄室の判断だけを見る
 console.log('first goal:', g.chooseGoal().label, 'at', g.x, g.y, 'in lair room', g.lairIdAt(F, g.x, g.y));
 const logs = [];
 g.onLog = (t) => logs.push(t);
