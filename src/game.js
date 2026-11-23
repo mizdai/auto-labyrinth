@@ -451,7 +451,8 @@ export class Game {
       const avoid = (x, y) => {
         const c = F.cell(x, y);
         if (!known[y * W + x]) return false;
-        if (c.type === 'lair' && !this.lairsCleared.includes(c.lairId) && (weak || this.lairsFled.includes(c.lairId))) return true;
+        const lid = this.lairIdAt(F, x, y);
+        if (lid !== null && !this.lairsCleared.includes(lid) && (weak || this.lairsFled.includes(lid))) return true;
         return c.type === 'pit' || c.type === 'teleport' || c.type === 'alarm' || (avoidBoss && c.type === 'boss' && !this.cleared);
       };
       let path = findPath(F, known, this.x, this.y, goal, avoid);
@@ -469,7 +470,8 @@ export class Game {
       // 避けられない玄室に弱った状態で入る前に、できるだけ回復しておく
       {
         const nc = F.cell(this.x + DX[d], this.y + DY[d]);
-        if (nc.type === 'lair' && !this.lairsCleared.includes(nc.lairId) && label !== 'lair' && partyCondition(this).hp < 0.8 && sinceCamp > 0) {
+        const nlid = this.lairIdAt(F, this.x + DX[d], this.y + DY[d]);
+        if (nlid !== null && nlid !== this.lairIdAt(F, this.x, this.y) && !this.lairsCleared.includes(nlid) && label !== 'lair' && partyCondition(this).hp < 0.8 && sinceCamp > 0) {
           const did = yield* this.camp();
           sinceCamp = 0;
           if (did) continue;
@@ -502,6 +504,9 @@ export class Game {
 
       // マスのイベント
       const cell = F.cell(this.x, this.y);
+      // 玄室：部屋の外から玄室の部屋に入った瞬間に戦闘（印のマスを踏まなくても）
+      const lairHere = this.lairIdAt(F, this.x, this.y);
+      const enteredLair = lairHere !== null && lairHere !== this.lairIdAt(F, px, py) ? lairHere : null;
       let res = null;
       if (cell.type === 'pit') {
         this.log('落とし穴だ！', 'bad');
@@ -517,15 +522,15 @@ export class Game {
         this.log('警報の罠だ！ 魔物が集まってきた。', 'bad');
         yield 1;
         res = yield* battle(this, makeEncounter(this.floor));
-      } else if (cell.type === 'lair' && !this.lairsCleared.includes(cell.lairId)) {
+      } else if (enteredLair !== null && !this.lairsCleared.includes(enteredLair)) {
         // 一度逃げた玄室に再び入るのは避けられない場合だけ。今度は退かずに全力で戦う
-        const forced = this.lairsFled.includes(cell.lairId);
+        const forced = this.lairsFled.includes(enteredLair);
         this.log(forced ? '避けられない玄室だ。覚悟を決めて踏み込んだ。' : '玄室に入った。', 'sys');
         yield 1;
         res = yield* battle(this, makeEncounter(this.floor, { lair: true }), { lair: true, noRun: forced });
-        if (res.result === 'win') this.lairsCleared.push(cell.lairId);
-        if (res.result === 'fled' && !this.lairsFled.includes(cell.lairId)) {
-          this.lairsFled.push(cell.lairId);
+        if (res.result === 'win') this.lairsCleared.push(enteredLair);
+        if (res.result === 'fled' && !this.lairsFled.includes(enteredLair)) {
+          this.lairsFled.push(enteredLair);
           this.log('この玄室は避けて進もう。', 'sys');
         }
       } else if (cell.type === 'boss' && !this.cleared) {
@@ -549,6 +554,15 @@ export class Game {
         }
       }
     }
+  }
+
+  // その区画が玄室の部屋なら玄室の番号（部屋の番号）、そうでなければ null
+  lairIdAt(F, x, y) {
+    if (!F.inside(x, y)) return null;
+    const room = F.cell(x, y).room;
+    if (room < 0) return null;
+    if (!F._lairSet) F._lairSet = new Set(F.lairs.map(l => l.id));
+    return F._lairSet.has(room) ? room : null;
   }
 
   // 明るい部屋に入ったら、部屋の中全体が見える（地図に載る）
@@ -586,7 +600,7 @@ export class Game {
     }
     // 探索済み：玄室を回る or うろつく
     const lair = F.lairs.filter(l => !this.lairsCleared.includes(l.id) && !this.lairsFled.includes(l.id) && isKnown(l.x, l.y));
-    if (lair.length) return { goal: (x, y) => lair.some(l => l.x === x && l.y === y), label: 'lair', avoidBoss: true };
+    if (lair.length) return { goal: (x, y) => lair.some(l => l.id === this.lairIdAt(F, x, y)), label: 'lair', avoidBoss: true };
     if (!this.lastWander || (this.lastWander.x === this.x && this.lastWander.y === this.y)) {
       // 地上へ戻ってレベルアップが必要か
       const knownCells = F.openCells().filter(p => isKnown(p.x, p.y));
