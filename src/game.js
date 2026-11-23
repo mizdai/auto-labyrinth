@@ -467,7 +467,15 @@ export class Game {
       }
       stuck = 0;
       const d = path[0];
-      // 避けられない玄室に弱った状態で入る前に、できるだけ回復しておく
+      // 安全装置：狭い範囲を行ったり来たりしているなら、遠くの既知の場所へ向かい直す
+      this.recent = this.recent || [];
+      this.recent.push(this.y * W + this.x);
+      if (this.recent.length > 60) this.recent.shift();
+      if (this.recent.length === 60 && new Set(this.recent).size <= 4 && label !== 'up' && label !== 'down') {
+        this.recent = [];
+        const far = F.openCells().filter(p => known[p.y * W + p.x] && Math.abs(p.x - this.x) + Math.abs(p.y - this.y) >= 8);
+        if (far.length) { this.lastWander = R.pick(far); this.forceWander = 40; }
+      }
       {
         const nc = F.cell(this.x + DX[d], this.y + DY[d]);
         const nlid = this.lairIdAt(F, this.x + DX[d], this.y + DY[d]);
@@ -506,7 +514,9 @@ export class Game {
       const cell = F.cell(this.x, this.y);
       // 玄室：部屋の外から玄室の部屋に入った瞬間に戦闘（印のマスを踏まなくても）
       const lairHere = this.lairIdAt(F, this.x, this.y);
-      const enteredLair = lairHere !== null && lairHere !== this.lairIdAt(F, px, py) ? lairHere : null;
+      // 外から入ったとき、または（逃げ出した玄室でなければ）部屋の中にいるときも、魔物に見つかって戦闘
+      const fromOutside = lairHere !== null && lairHere !== this.lairIdAt(F, px, py);
+      const enteredLair = lairHere !== null && (fromOutside || !this.lairsFled.includes(lairHere)) ? lairHere : null;
       let res = null;
       if (cell.type === 'pit') {
         this.log('落とし穴だ！', 'bad');
@@ -524,7 +534,7 @@ export class Game {
         res = yield* battle(this, makeEncounter(this.floor));
       } else if (enteredLair !== null && !this.lairsCleared.includes(enteredLair)) {
         // 一度逃げた玄室に再び入るのは避けられない場合だけ。今度は退かずに全力で戦う
-        const forced = this.lairsFled.includes(enteredLair);
+        const forced = fromOutside && this.lairsFled.includes(enteredLair);
         this.log(forced ? '避けられない玄室だ。覚悟を決めて踏み込んだ。' : '玄室に入った。', 'sys');
         yield 1;
         res = yield* battle(this, makeEncounter(this.floor, { lair: true }), { lair: true, noRun: forced });
@@ -578,6 +588,13 @@ export class Game {
   chooseGoal() {
     const F = this.F, known = this.knownMap();
     const isKnown = (x, y) => known[y * W + x];
+    // 安全装置が働いたあとは、しばらく決めた場所へ向かう
+    if (this.forceWander > 0 && this.lastWander && this.mode !== 'return') {
+      this.forceWander--;
+      const t = this.lastWander;
+      if (!(t.x === this.x && t.y === this.y)) return { goal: (x, y) => x === t.x && y === t.y, label: 'wander', avoidBoss: true };
+      this.forceWander = 0;
+    }
     // かんぬきの扉に気づいていれば、まず外しに行く（帰還中でも、近道は帰り道の助けになる）
     if (this.unbarFloor === this.floor && F.shortcut && !this.shortcuts.includes(this.floor)) {
       const sc = F.shortcut;
@@ -600,7 +617,10 @@ export class Game {
     }
     // 探索済み：玄室を回る or うろつく
     const lair = F.lairs.filter(l => !this.lairsCleared.includes(l.id) && !this.lairsFled.includes(l.id) && isKnown(l.x, l.y));
-    if (lair.length) return { goal: (x, y) => lair.some(l => l.id === this.lairIdAt(F, x, y)), label: 'lair', avoidBoss: true };
+    // 目的地は「いま立っていない」玄室の部屋（立っている部屋なら、すでに戦闘が起きているはず）
+    const hereLair = this.lairIdAt(F, this.x, this.y);
+    const lairT = lair.filter(l => l.id !== hereLair);
+    if (lairT.length) return { goal: (x, y) => lairT.some(l => l.id === this.lairIdAt(F, x, y)), label: 'lair', avoidBoss: true };
     if (!this.lastWander || (this.lastWander.x === this.x && this.lastWander.y === this.y)) {
       // 地上へ戻ってレベルアップが必要か
       const knownCells = F.openCells().filter(p => isKnown(p.x, p.y));
