@@ -7,7 +7,7 @@ export const W = 20, H = 20;
 export const DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];
 export const DIR_NAMES = ['北', '東', '南', '西'];
 export const OPEN = 0, WALL = 1, DOOR = 2, SEAL = 3;  // SEAL: 近道の扉（開通するまで通れない）
-export const MAP_VERSION = 4;
+export const MAP_VERSION = 5;
 export const MAX_FLOOR = 10;
 
 export class Floor {
@@ -102,8 +102,8 @@ function generateFloor(worldSeed, floor) {
   const up = floor === 1 ? { x: 0, y: H - 1 } : getFloor(worldSeed, floor - 1).down;
   const theme = floorTheme(worldSeed, floor);
   const rng = new Rng((worldSeed * 7919 + floor * 104729) >>> 0);
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const F = tryGenerate(rng, floor, up, theme, attempt < 40);
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const F = theme === 'F' ? tryGenerate(rng, floor, up, theme, attempt < 40) : tryGenerateOpen(rng, floor, up, theme, attempt < 60);
     if (F) return F;
   }
   // どうしても作れない場合は、入り組んだ通路のテーマで作る
@@ -566,12 +566,310 @@ function tryGenerate(rng, floor, up, theme, needShortcut) {
   }
   if (!made && needShortcut) return null;
 
+  F.rooms = rooms;
+  decorate(F, rng, floor, up, rooms, order, 0);
+  return F;
+}
+
+
+// ---- 空き地に壁を立てる方式（テーマ①〜⑤） ----
+// 全区画を床にしてから、長方形の区画割りで壁を立てる。区画の間に空けたすき間が通路になる。
+// gap[depth]: その深さの分割で通路のすき間を空ける確率
+const OPEN_THEMES = {
+  A: { gap: [1, 1, 0.75, 0.55, 0.4], gapW: 1, leafMax: 5, leafArea: 12, stopP: 0.25, hallP: 0.10, clusterP: 0.20, nookP: 0.12, plazaP: 0.00, solidP: 0.04, extra: [3, 5], tree: false },
+  B: { gap: [0.9, 0.85, 0.8, 0.7, 0.6], gapW: 1, leafMax: 4, leafArea: 9, stopP: 0.15, hallP: 0.05, clusterP: 0.30, nookP: 0.25, plazaP: 0.06, solidP: 0.05, extra: [6, 9], tree: false },
+  C: { gap: [1, 1, 0.7, 0.5, 0.3], gapW: 2, leafMax: 5, leafArea: 12, stopP: 0.30, hallP: 0.20, clusterP: 0.15, nookP: 0.10, plazaP: 0.00, solidP: 0.03, extra: [3, 5], tree: false },
+  D: { gap: [0.3, 0, 0, 0, 0], gapW: 1, leafMax: 5, leafArea: 12, stopP: 0.20, hallP: 0.15, clusterP: 0.30, nookP: 0.00, plazaP: 0.00, solidP: 0.02, extra: [4, 6], tree: false },
+  E: { gap: [1, 0.9, 0.85, 0.75, 0.6], gapW: 1, leafMax: 4, leafArea: 9, stopP: 0.20, hallP: 0.08, clusterP: 0.25, nookP: 0.15, plazaP: 0.00, solidP: 0.04, extra: [0, 0], tree: true },
+};
+
+function tryGenerateOpen(rng, floor, up, theme, needShortcut) {
+  const P = OPEN_THEMES[theme];
+  const F = new Floor(floor);
+  F.theme = theme;
+  const idx = (x, y) => y * W + x;
+  // 内側の壁をすべて取り払う
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (x < W - 1) F.setWall(x, y, 1, OPEN);
+    if (y < H - 1) F.setWall(x, y, 2, OPEN);
+  }
+  const setW = (x, y, d, v) => { if (F.inside(x + DX[d], y + DY[d])) F.setWall(x, y, d, v); };
+
+  // 1. 区画割り
+  const leaves = [];
+  const split = (r, depth) => {
+    const canV = r.w >= 4 + P.gapW, canH = r.h >= 4 + P.gapW;   // 両側に幅2以上を残せるか
+    const small = r.w <= P.leafMax && r.h <= P.leafMax;
+    if ((!canV && !canH) || (small && (r.w * r.h <= P.leafArea || rng.chance(P.stopP)))) { leaves.push(r); return; }
+    const vertical = canV && (!canH || (r.w > r.h ? true : r.w < r.h ? false : rng.chance(0.5)));
+    const gap = rng.chance(P.gap[Math.min(depth, P.gap.length - 1)]) ? P.gapW : 0;
+    const len = vertical ? r.w : r.h;
+    const c = rng.range(2, len - 2 - gap);            // 前半の幅
+    if (vertical) {
+      split({ x: r.x, y: r.y, w: c, h: r.h }, depth + 1);
+      split({ x: r.x + c + gap, y: r.y, w: r.w - c - gap, h: r.h }, depth + 1);
+    } else {
+      split({ x: r.x, y: r.y, w: r.w, h: c }, depth + 1);
+      split({ x: r.x, y: r.y + c + gap, w: r.w, h: r.h - c - gap }, depth + 1);
+    }
+  };
+  split({ x: 0, y: 0, w: W, h: H }, 0);
+
+  // 2. 区画の使い道：部屋・小部屋の集まり・広間・広場（壁なし）・岩盤
+  const rooms = [];
+  const roomOf = (x, y) => F.cell(x, y).room;
+  const addRoom = (r) => {
+    const i = rooms.length;
+    rooms.push(r);
+    for (let yy = r.y; yy < r.y + r.h; yy++) for (let xx = r.x; xx < r.x + r.w; xx++) F.cell(xx, yy).room = i;
+    return i;
+  };
+  const wallAround = (r) => {
+    for (let xx = r.x; xx < r.x + r.w; xx++) { setW(xx, r.y, 0, WALL); setW(xx, r.y + r.h - 1, 2, WALL); }
+    for (let yy = r.y; yy < r.y + r.h; yy++) { setW(r.x, yy, 3, WALL); setW(r.x + r.w - 1, yy, 1, WALL); }
+  };
+  const innerDoors = [];          // 小部屋の集まりの中の扉（あとで付ける）
+  const sealedFront = new Set();  // 集まりの奥の部屋（外への扉を付けない）
+  for (const r of leaves) {
+    const area = r.w * r.h;
+    const upHere = up.x >= r.x && up.x < r.x + r.w && up.y >= r.y && up.y < r.y + r.h;
+    if (!upHere && area <= 6 && rng.chance(P.solidP)) {
+      // 岩盤：すべての壁を閉じる
+      for (let yy = r.y; yy < r.y + r.h; yy++) for (let xx = r.x; xx < r.x + r.w; xx++) for (let d = 0; d < 4; d++) setW(xx, yy, d, WALL);
+      F.cell(r.x, r.y).solid = true;
+      continue;
+    }
+    if (rng.chance(P.plazaP)) continue;   // 広場：壁を立てない（通路の一部になる）
+    wallAround(r);
+    if (!upHere && rng.chance(P.nookP)) {
+      // くぼみ：三方だけ壁を立て、一方を通路に開く（部屋ではなく通路の一部）
+      const sides = [0, 1, 2, 3].filter(d => d === 0 ? r.y > 0 : d === 2 ? r.y + r.h < H : d === 3 ? r.x > 0 : r.x + r.w < W);
+      if (sides.length) {
+        const d = rng.pick(sides);
+        if (d === 0 || d === 2) for (let xx = r.x; xx < r.x + r.w; xx++) setW(xx, d === 0 ? r.y : r.y + r.h - 1, d, OPEN);
+        else for (let yy = r.y; yy < r.y + r.h; yy++) setW(d === 3 ? r.x : r.x + r.w - 1, yy, d, OPEN);
+        // 中に短い仕切りを1本立てて、L字やコの字の通路にする
+        if (r.w >= 3 && r.h >= 3) {
+          if (d === 0 || d === 2) { const xx = r.x + 1 + rng.int(r.w - 2); for (let yy = r.y; yy < r.y + r.h - 1; yy++) setW(xx, d === 0 ? yy : yy + 1, 3, WALL); }
+          else { const yy = r.y + 1 + rng.int(r.h - 2); for (let xx = r.x; xx < r.x + r.w - 1; xx++) setW(d === 3 ? xx : xx + 1, yy, 0, WALL); }
+        }
+        continue;
+      }
+    }
+    if (area >= 8 && rng.chance(P.clusterP)) {
+      // 小部屋の集まり：長い方向に2〜3つに仕切り、手前から順に扉でつなぐ
+      const vertical = r.w >= r.h;
+      const len = vertical ? r.w : r.h;
+      const n = Math.min(len >= 6 ? 3 : 2, Math.floor(len / 2));
+      const cuts = [];
+      let pos = 0;
+      for (let k = 0; k < n; k++) {
+        const rest = len - pos, left = n - k;
+        const size = k === n - 1 ? rest : rng.range(2, rest - 2 * (left - 1));
+        cuts.push([pos, size]); pos += size;
+      }
+      const ids = cuts.map(([o, sz]) => addRoom(vertical ? { x: r.x + o, y: r.y, w: sz, h: r.h } : { x: r.x, y: r.y + o, w: r.w, h: sz }));
+      ids.forEach((id, k) => {
+        wallAround(rooms[id]);
+        if (k > 0) {
+          sealedFront.add(id);
+          const a = rooms[ids[k - 1]];
+          if (vertical) innerDoors.push([a.x + a.w - 1, a.y + rng.int(a.h), 1]);
+          else innerDoors.push([a.x + rng.int(a.w), a.y + a.h - 1, 2]);
+        }
+      });
+      // 手前（外とつながる側）をランダムに。奥の部屋は手前の部屋を通らないと入れない
+      if (rng.chance(0.5)) { sealedFront.delete(ids[ids.length - 1]); sealedFront.add(ids[0]); for (let k = 1; k < ids.length - 1; k++) sealedFront.add(ids[k]); }
+      continue;
+    }
+    const id = addRoom(r);
+    if (area >= 12 && rng.chance(P.hallP)) rooms[id].hall = true;   // 広間（中に何もない大部屋）
+  }
+  for (const [x, y, d] of innerDoors) setW(x, y, d, DOOR);
+
+  // 3. 通路だけを木の形にする（⑤：輪を作らない）
+  const isCorr = (x, y) => F.inside(x, y) && roomOf(x, y) < 0 && !F.cell(x, y).solid;
+  if (P.tree) {
+    const seen = new Uint8Array(W * H);
+    const starts = [];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (isCorr(x, y)) starts.push({ x, y });
+    rng.shuffle(starts);
+    for (const s0 of starts) {
+      if (seen[idx(s0.x, s0.y)]) continue;
+      seen[idx(s0.x, s0.y)] = 1;
+      const stack = [s0];
+      const treeEdges = new Set();
+      while (stack.length) {
+        const c = stack[stack.length - 1];
+        const ds = rng.shuffle([0, 1, 2, 3]).filter(d => {
+          const nx = c.x + DX[d], ny = c.y + DY[d];
+          return isCorr(nx, ny) && F.wall(c.x, c.y, d) === OPEN && !seen[idx(nx, ny)];
+        });
+        if (!ds.length) { stack.pop(); continue; }
+        const d = ds[0], nx = c.x + DX[d], ny = c.y + DY[d];
+        seen[idx(nx, ny)] = 1;
+        treeEdges.add(Math.min(idx(c.x, c.y), idx(nx, ny)) + ':' + Math.max(idx(c.x, c.y), idx(nx, ny)));
+        stack.push({ x: nx, y: ny });
+      }
+      // 木に使わなかった通路どうしの境目は壁にする
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        if (!isCorr(x, y)) continue;
+        for (const d of [1, 2]) {
+          const nx = x + DX[d], ny = y + DY[d];
+          if (!isCorr(nx, ny) || F.wall(x, y, d) !== OPEN) continue;
+          const key = Math.min(idx(x, y), idx(nx, ny)) + ':' + Math.max(idx(x, y), idx(nx, ny));
+          if (seen[idx(x, y)] && seen[idx(nx, ny)] && !treeEdges.has(key)) {
+            // 別の木の辺かもしれないので、全部の木の辺を集めてから判断する
+          }
+        }
+      }
+      F._treeEdges = (F._treeEdges || new Set());
+      for (const k of treeEdges) F._treeEdges.add(k);
+    }
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (!isCorr(x, y)) continue;
+      for (const d of [1, 2]) {
+        const nx = x + DX[d], ny = y + DY[d];
+        if (!isCorr(nx, ny) || F.wall(x, y, d) !== OPEN) continue;
+        const key = Math.min(idx(x, y), idx(nx, ny)) + ':' + Math.max(idx(x, y), idx(nx, ny));
+        if (!F._treeEdges.has(key)) F.setWall(x, y, d, WALL);
+      }
+    }
+    delete F._treeEdges;
+  }
+
+  // 4. 扉：まず各部屋を通路へ、次に全体がつながるまで、最後に輪を作る扉を少し
+  //    領域：部屋は部屋ごと、通路は壁で区切られたまとまりごと
+  const region = new Int32Array(W * H).fill(-1);
+  let nReg = rooms.length;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (roomOf(x, y) >= 0) region[idx(x, y)] = roomOf(x, y);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (!isCorr(x, y) || region[idx(x, y)] >= 0) continue;
+    const id = nReg++;
+    const q = [[x, y]]; region[idx(x, y)] = id;
+    while (q.length) {
+      const [cx, cy] = q.pop();
+      for (let d = 0; d < 4; d++) {
+        const nx = cx + DX[d], ny = cy + DY[d];
+        if (!isCorr(nx, ny) || F.wall(cx, cy, d) !== OPEN || region[idx(nx, ny)] >= 0) continue;
+        region[idx(nx, ny)] = id; q.push([nx, ny]);
+      }
+    }
+  }
+  const parent = Array.from({ length: nReg }, (_, i) => i);
+  const find = (i) => parent[i] === i ? i : (parent[i] = find(parent[i]));
+  const union = (a, b) => { parent[find(a)] = find(b); };
+  // 既存の扉（集まりの中）でつながっている部屋をまとめる
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) for (const d of [1, 2]) {
+    const nx = x + DX[d], ny = y + DY[d];
+    if (!F.inside(nx, ny) || F.wall(x, y, d) === WALL) continue;
+    const a = region[idx(x, y)], b = region[idx(nx, ny)];
+    if (a >= 0 && b >= 0 && a !== b) union(a, b);
+  }
+  // 扉の候補：異なる領域の間の壁
+  const cands = [];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) for (const d of [1, 2]) {
+    const nx = x + DX[d], ny = y + DY[d];
+    if (!F.inside(nx, ny) || F.wall(x, y, d) !== WALL) continue;
+    const a = region[idx(x, y)], b = region[idx(nx, ny)];
+    if (a < 0 || b < 0 || a === b) continue;
+    // 集まりの奥の部屋には外からの扉を付けない
+    const ra = roomOf(x, y), rb = roomOf(nx, ny);
+    if ((ra >= 0 && sealedFront.has(ra)) || (rb >= 0 && sealedFront.has(rb))) continue;
+    cands.push({ x, y, d, a, b, toCorr: (ra < 0) !== (rb < 0) });
+  }
+  rng.shuffle(cands);
+  // (1) 通路に面した部屋は、通路側に扉を1つ
+  const hasDoor = new Set();
+  for (const c of cands) {
+    if (!c.toCorr) continue;
+    const room = roomOf(c.x, c.y) >= 0 ? roomOf(c.x, c.y) : roomOf(c.x + DX[c.d], c.y + DY[c.d]);
+    if (hasDoor.has(room) || find(c.a) === find(c.b)) continue;
+    hasDoor.add(room);
+    F.setWall(c.x, c.y, c.d, DOOR); union(c.a, c.b);
+  }
+  // (2) 全体がつながるまで
+  for (const c of cands) {
+    if (F.wall(c.x, c.y, c.d) !== WALL || find(c.a) === find(c.b)) continue;
+    F.setWall(c.x, c.y, c.d, DOOR); union(c.a, c.b);
+  }
+  // (3) 輪を作る扉
+  let extra = rng.range(P.extra[0], P.extra[1]);
+  for (const c of cands) {
+    if (extra <= 0) break;
+    if (F.wall(c.x, c.y, c.d) !== WALL) continue;
+    F.setWall(c.x, c.y, c.d, DOOR); extra--;
+  }
+
+  // 5. 階段
+  F.up = { x: up.x, y: up.y };
+  F.cell(up.x, up.y).type = 'up';
+  const dist = F.distances(up.x, up.y);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (F.isOpenCell(x, y) && dist[idx(x, y)] < 0) return null;
+  const startRoom = roomOf(up.x, up.y);
+  // 下り階段は、上り階段から遠い小さめの部屋に
+  let downRoom = -1, bestD = -1;
+  rooms.forEach((r, i) => {
+    if (i === startRoom || r.w * r.h > 12) return;
+    // 上り階段から見た目にも離れていること
+    if (Math.abs(r.x + r.w / 2 - up.x) + Math.abs(r.y + r.h / 2 - up.y) < 10) return;
+    let dmin = 1e9;
+    for (let yy = r.y; yy < r.y + r.h; yy++) for (let xx = r.x; xx < r.x + r.w; xx++) dmin = Math.min(dmin, dist[idx(xx, yy)]);
+    if (dmin > bestD) { bestD = dmin; downRoom = i; }
+  });
+  if (downRoom < 0) return null;
+  const dr = rooms[downRoom];
+  let target = null;
+  for (let yy = dr.y; yy < dr.y + dr.h; yy++) for (let xx = dr.x; xx < dr.x + dr.w; xx++)
+    if (!target || dist[idx(xx, yy)] > dist[idx(target.x, target.y)]) target = { x: xx, y: yy };
+  if (floor < MAX_FLOOR) { F.down = target; F.cell(target.x, target.y).type = 'down'; }
+  else { F.boss = target; F.cell(target.x, target.y).type = 'boss'; }
+
+  // 6. 近道：下り階段の部屋の壁のうち、開けると上り階段からの道のりが最も縮む壁を封印扉に
+  const closedD = dist[idx(target.x, target.y)];
+  let best = null;
+  for (let yy = dr.y; yy < dr.y + dr.h; yy++) for (let xx = dr.x; xx < dr.x + dr.w; xx++) for (let d = 0; d < 4; d++) {
+    const nx = xx + DX[d], ny = yy + DY[d];
+    if (!F.inside(nx, ny) || roomOf(nx, ny) === downRoom || F.wall(xx, yy, d) !== WALL || dist[idx(nx, ny)] < 0) continue;
+    const via = dist[idx(nx, ny)] + 1 + Math.abs(xx - target.x) + Math.abs(yy - target.y);
+    const gain = closedD - via;
+    if (!best || gain > best.gain) best = { x: xx, y: yy, d, gain };
+  }
+  if (best && best.gain >= Math.max(6, closedD * 0.3)) {
+    F.setWall(best.x, best.y, best.d, SEAL);
+    F.shortcut = { x: best.x, y: best.y, d: best.d };
+    // 近道を開けたときの道筋（地図に載せる区画）
+    F.openShortcut();
+    const prev = new Int32Array(W * H).fill(-1), seen = new Uint8Array(W * H);
+    const q = [[up.x, up.y]]; seen[idx(up.x, up.y)] = 1;
+    while (q.length) {
+      const [x, y] = q.shift();
+      for (let d = 0; d < 4; d++) {
+        if (!F.passable(x, y, d)) continue;
+        const nx = x + DX[d], ny = y + DY[d];
+        if (seen[idx(nx, ny)]) continue;
+        seen[idx(nx, ny)] = 1; prev[idx(nx, ny)] = idx(x, y); q.push([nx, ny]);
+      }
+    }
+    const path = [];
+    for (let k = idx(target.x, target.y); k >= 0; k = prev[k]) path.unshift({ x: k % W, y: (k / W) | 0 });
+    F.shortcutPath = path;
+    F.setWall(best.x, best.y, best.d, SEAL);
+  } else if (needShortcut) return null;
+
+  F.rooms = rooms;
+  decorate(F, rng, floor, up, rooms, null, startRoom);
+  return F;
+}
+
+// 玄室・罠・暗闇を置く（どの生成方式でも共通）。startRoom は上り階段のある部屋（なければ -1）
+function decorate(F, rng, floor, up, rooms, order, startRoom) {
   // 5. 玄室（固定の敵と宝箱）：上り階段の部屋以外の、およそ半分の部屋。扉に面していない区画を選ぶ
   // 玄室は部屋の3分の1ほど、多くても5つ
   const lairCount = Math.min(5, Math.max(3, Math.round((rooms.length - 1) / 3)));
   const lairRooms = order
     ? new Set(order.slice(1, -1))   // 順路の迷宮：途中の部屋はすべて玄室（ボスの部屋は除く）
-    : new Set(rng.shuffle(rooms.map((_, i) => i).filter(i => i !== 0)).slice(0, lairCount));
+    : new Set(rng.shuffle(rooms.map((_, i) => i).filter(i => i !== startRoom)).slice(0, lairCount));
   const doorCount = (x, y) => [0, 1, 2, 3].filter(d => {
     const w = F.wall(x, y, d);
     return w === DOOR || w === SEAL || (w === OPEN && F.inside(x + DX[d], y + DY[d]) && F.cell(x + DX[d], y + DY[d]).room !== F.cell(x, y).room);
@@ -633,7 +931,6 @@ function tryGenerate(rng, floor, up, theme, needShortcut) {
       }
     }
   }
-  return F;
 }
 
 // 既知情報に基づく経路探索。visited された区画の壁だけを知っているものとする。

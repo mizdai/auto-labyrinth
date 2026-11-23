@@ -486,6 +486,7 @@ export class Game {
       this.x += DX[d]; this.y += DY[d];
       this.stats.steps++;
       known[this.y * W + this.x] = 1;
+      this.seeRoom(F, known);
       yield wasDoor ? 2 : 1;
 
       // 毒
@@ -548,6 +549,14 @@ export class Game {
         }
       }
     }
+  }
+
+  // 明るい部屋に入ったら、部屋の中全体が見える（地図に載る）
+  seeRoom(F, known) {
+    const c = F.cell(this.x, this.y);
+    if (c.room < 0 || c.dark || !F.rooms) return;
+    const r = F.rooms[c.room];
+    for (let yy = r.y; yy < r.y + r.h; yy++) for (let xx = r.x; xx < r.x + r.w; xx++) if (!F.cell(xx, yy).dark) known[yy * W + xx] = 1;
   }
 
   encounterRate(cell) { return (cell.dark ? 0.07 : 0.045) + this.floor * 0.002; }
