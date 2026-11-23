@@ -429,6 +429,20 @@ export class Game {
       const here = F.cell(this.x, this.y);
       // 階段に到着
       if (label === 'up' && here.type === 'up') { yield* this.climb(-1); continue; }
+      // かんぬきの扉の前に着いた：扉の方を向いて外す
+      if (label === 'unbar' && this.x === F.shortcut.x && this.y === F.shortcut.y) {
+        if (this.dir !== F.shortcut.d) { this.dir = F.shortcut.d; yield 1; }
+        F.openShortcut();
+        this.shortcuts.push(this.floor);
+        this.unbarFloor = null;
+        // 近道の通路は扉の向こうに見通せるので、地図に載せる
+        for (const p of F.shortcutPath || []) known[p.y * W + p.x] = 1;
+        this.log('扉のかんぬきを外した。', 'sys');
+        yield 2;
+        this.log('上り階段への近道が開通した！', 'good');
+        yield 2;
+        continue;
+      }
       if (label === 'down' && here.type === 'down') { yield* this.climb(1); continue; }
 
       // 避けたいマス（他に道がなければ通る）。
@@ -477,17 +491,12 @@ export class Game {
       // 毒
       if (this.stats.steps % 4 === 0) for (const c of this.party) if (c.poison && isAlive(c)) { c.hp -= 1; if (c.hp <= 0) { c.hp = 0; c.status = 'dead'; c.poison = false; this.log(`${c.name}は毒で力尽きた…`, 'bad'); yield 1; } }
 
-      // 下り階段のある部屋に入ったら、近道の扉を開ける
-      if (F.shortcut && !this.shortcuts.includes(this.floor) && F.cell(this.x, this.y).room >= 0
-          && F.cell(this.x, this.y).room === F.cell(F.shortcut.x, F.shortcut.y).room) {
-        F.openShortcut();
-        this.shortcuts.push(this.floor);
-        // 近道の通路は扉の向こうに見通せるので、地図に載せる
-        for (const p of F.shortcutPath || []) known[p.y * W + p.x] = 1;
-        this.log('部屋の奥に閂のかかった扉がある。閂を外した。', 'sys');
+      // 下り階段のある部屋に入ったら、かんぬきのかかった扉に気づく（このあと扉まで行って外す）
+      if (F.shortcut && !this.shortcuts.includes(this.floor) && this.unbarFloor !== this.floor
+          && F.cell(this.x, this.y).room >= 0 && F.cell(this.x, this.y).room === F.cell(F.shortcut.x, F.shortcut.y).room) {
+        this.unbarFloor = this.floor;
+        this.log('部屋の奥に、かんぬきのかかった扉がある。', 'sys');
         yield 1;
-        this.log('上り階段への近道が開通した！', 'good');
-        yield 2;
       }
 
       // マスのイベント
@@ -546,6 +555,11 @@ export class Game {
   chooseGoal() {
     const F = this.F, known = this.knownMap();
     const isKnown = (x, y) => known[y * W + x];
+    // かんぬきの扉に気づいていれば、まず外しに行く（帰還中でも、近道は帰り道の助けになる）
+    if (this.unbarFloor === this.floor && F.shortcut && !this.shortcuts.includes(this.floor)) {
+      const sc = F.shortcut;
+      return { goal: (x, y) => x === sc.x && y === sc.y, label: 'unbar', avoidBoss: true };
+    }
     if (this.mode === 'return') return { goal: (x, y) => x === F.up.x && y === F.up.y, label: 'up', avoidBoss: true };
     const tf = targetFloor(this);
     if (this.floor > tf) return { goal: (x, y) => x === F.up.x && y === F.up.y, label: 'up', avoidBoss: true };
