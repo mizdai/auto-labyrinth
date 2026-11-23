@@ -78,6 +78,8 @@ export function chooseActions(game, B) {
   party.forEach((c, idx) => {
     if (!canAct(c)) return;
     const inFront = idx < 3;
+    // 呪文を封じられているあいだは、呪文を選ばない（打撃・防御・道具だけ）
+    if (!c._silenced) {
     // 1. 回復
     const hurt = party.filter(t => isAlive(t) && !healTargets.has(t) && t.hp < t.maxhp * (useMult > 1 ? 0.35 : 0.5)).sort((a, b) => a.hp / a.maxhp - b.hp / b.maxhp)[0];
     if (hurt) {
@@ -120,6 +122,7 @@ export function chooseActions(game, B) {
         const buff = canCast(c, SPELL_BY_ID.kasumi) ? 'kasumi' : canCast(c, SPELL_BY_ID.mamori) ? 'mamori' : null;
         if (buff && !inFront) { acts.set(c, { type: 'spell', spell: buff }); buffed = true; return; }
       }
+    }
     }
     // 3. 打撃 or 防御
     if (inFront) {
