@@ -75,7 +75,7 @@ export function drawView(ctx, game, size, cam = poseOf(game)) {
   // 遠いものから描く（手前の壁が奥を塗りつぶす）
   items.sort((a, b) => b.dist - a.dist);
   for (const it of items) {
-    if (it.kind === 'mark') { drawMark(ctx, it, toCam, proj, size); continue; }
+    if (it.kind === 'mark') { drawMark(ctx, it, toCam, proj, size, cam.a); continue; }
     const quad = [toCam(it.x1, it.y1, 0), toCam(it.x2, it.y2, 0), toCam(it.x2, it.y2, 1), toCam(it.x1, it.y1, 1)];
     const poly = clipNear(quad);
     if (poly.length < 3) continue;
@@ -124,24 +124,61 @@ function strokeSeg(ctx, a, b, proj) {
   ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
 }
 
-function drawMark(ctx, it, toCam, proj, size) {
+// 床・天井の印。上り階段は天井に、下り階段は床に、四角い開口部と段差を線で描く
+function drawMark(ctx, it, toCam, proj, size, camA) {
+  const up = it.type === 'up';
+  const h0 = up ? 1 : 0;
   const col = it.type === 'boss' ? '#e05050' : '#80c0ff';
-  const quad = [[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]].map(([u, v]) => toCam(it.x + u, it.y + v, 0));
-  const poly = clipNear(quad);
+  const P = (u, v, h) => toCam(it.x + u, it.y + v, h);
+  // 開口部の四角
+  const poly = clipNear([P(0.2, 0.2, h0), P(0.8, 0.2, h0), P(0.8, 0.8, h0), P(0.2, 0.8, h0)]);
   if (poly.length < 3) return;
   const pts = poly.map(proj);
-  ctx.strokeStyle = col;
   ctx.beginPath();
   pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
-  ctx.closePath(); ctx.stroke();
+  ctx.closePath();
+  ctx.fillStyle = '#000';
+  ctx.fill();
+  ctx.strokeStyle = col;
+  ctx.stroke();
+  if (it.type !== 'boss') {
+    // 段差：開口部から4段（上りは天井の上へ、下りは床の下へ）
+    // 視点の向きに合わせて段を並べる。t：手前0→奥1、s：左右0→1
+    const fd = ((Math.round(camA / (Math.PI / 2)) % 4) + 4) % 4;
+    const Q = (t, sl, hh) => {
+      const f = 0.6 * t, r = 0.6 * sl;     // 手前の縁からの奥行き、左の縁からの距離
+      switch (fd) {
+        case 0: return P(0.2 + r, 0.8 - f, hh);   // 北向き（奥が北、右が東）
+        case 2: return P(0.8 - r, 0.2 + f, hh);   // 南向き
+        case 1: return P(0.2 + f, 0.2 + r, hh);   // 東向き（奥が東、右が南）
+        default: return P(0.8 - f, 0.8 - r, hh);  // 西向き
+      }
+    };
+    const n = 4, dh = 0.15;
+    const prof = [];
+    // 段の並び：奥の縁から手前に向かって、1段ずつ上る（天井）／下りる（床）。
+    // 穴の外にはみ出して見えるが、階段として読み取りやすいので切り抜かない
+    for (let k = 0; k < n; k++) {
+      const t = 1 - k / n;
+      prof.push([t, h0 + (up ? dh : -dh) * k], [t, h0 + (up ? dh : -dh) * (k + 1)]);
+    }
+    prof.push([0, h0 + (up ? dh : -dh) * n]);
+    const prev = ctx.lineWidth;
+    ctx.lineWidth = Math.max(1, prev * 0.8);
+    for (let i = 0; i < prof.length; i++) {
+      const [t, hh] = prof[i];
+      strokeSeg(ctx, Q(t, 0, hh), Q(t, 1, hh), proj);                  // 段の横線
+      if (i > 0) for (const sl of [0, 1]) strokeSeg(ctx, Q(prof[i - 1][0], sl, prof[i - 1][1]), Q(t, sl, hh), proj); // 側面の段々
+    }
+    ctx.lineWidth = prev;
+    // 開口部の縁を段の線の上から描き直す
+    ctx.strokeStyle = col;
+    ctx.beginPath();
+    pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+    ctx.closePath();
+    ctx.stroke();
+  }
   ctx.strokeStyle = LINE;
-  const c = toCam(it.x + 0.5, it.y + 0.5, 0);
-  if (c[1] < 0.3 || c[1] > 3.5) return;
-  const [sx, sy] = proj(c);
-  ctx.fillStyle = col;
-  ctx.font = `${Math.max(10, Math.min(size / 12, size / (8 * c[1])))}px sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.fillText(it.type === 'up' ? '▲上り階段' : it.type === 'down' ? '▼下り階段' : '◆', sx, Math.min(size - 6, sy));
 }
 
 function line(ctx, x1, y1, x2, y2) { ctx.strokeStyle = ctx.strokeStyle || LINE; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }

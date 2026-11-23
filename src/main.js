@@ -153,10 +153,10 @@ function appendLog(text, cls) {
   const div = document.createElement('div');
   div.textContent = text;
   if (cls) div.className = cls;
-  const atBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40;
   logEl.appendChild(div);
   while (logEl.children.length > 150) logEl.removeChild(logEl.firstChild);
-  if (atBottom) logEl.scrollTop = logEl.scrollHeight;
+  // 新しいメッセージが来たら常に最新まで移動する（過去ログは一時停止して読む）
+  logEl.scrollTop = logEl.scrollHeight;
 }
 
 // ---- 操作 ----

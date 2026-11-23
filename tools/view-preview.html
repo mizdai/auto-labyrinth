@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>迷宮表示プレビュー</title>
+<style>body{background:#111;color:#ccc;font:13px sans-serif;margin:8px} canvas{width:100%;max-width:480px;display:block;margin:4px 0 12px;border:1px solid #445}</style>
+</head><body>
+<p>階段の見え方の確認用（開発用ページ）</p>
+<div id="out"></div>
+<script type="module">
+import { drawView } from '../src/render.js';
+import { getFloor, DX, DY } from '../src/dungeon.js';
+const seed = 12345;
+const out = document.getElementById('out');
+// target の区画を、隣の区画から dist マス手前で見る
+function show(label, floor, target) {
+  const F = getFloor(seed, floor);
+  for (let d = 0; d < 4; d++) {
+    // target から逆向きに、壁のない方向へ下がる
+    let x = target.x, y = target.y, ok = true;
+    for (let k = 0; k < 2; k++) {
+      const back = (d + 2) % 4;
+      if (!F.passable(x, y, back)) { ok = k > 0; break; }
+      x += DX[back]; y += DY[back];
+    }
+    if (!ok || (x === target.x && y === target.y)) continue;
+    const p = document.createElement('p'); p.textContent = label; out.appendChild(p);
+    const c = document.createElement('canvas'); c.width = 600; c.height = 600; out.appendChild(c);
+    const game = { location: 'dungeon', F };
+    drawView(c.getContext('2d'), game, 600, { x: x + 0.5, y: y + 0.5, a: d * Math.PI / 2 });
+    return;
+  }
+}
+const f1 = getFloor(seed, 1), f2 = getFloor(seed, 2);
+show('下り階段（地下1階）', 1, f1.down);
+show('上り階段（地下2階）', 2, f2.up);
+</script>
+</body></html>
