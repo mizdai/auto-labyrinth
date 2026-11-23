@@ -108,6 +108,17 @@ export function* battle(game, groups, opts = {}) {
       if (u.asleep > 0) u.asleep--;
       if (g.mon.flags.regen) u.hp = Math.min(u.max, u.hp + Math.max(1, Math.floor(g.mon.lv / 2)));
     }
+    // 死亡・灰・石化・麻痺の仲間はターンの終わりに最後尾へ下げ、動ける仲間を前へ詰める
+    {
+      const down = (c) => c.status === 'dead' || c.status === 'ash' || c.status === 'stoned' || c.status === 'paralyzed';
+      const before = party.map(c => c.id).join(',');
+      const ordered = [...party.filter(c => !down(c)), ...party.filter(down)];
+      if (ordered.map(c => c.id).join(',') !== before) {
+        party.splice(0, party.length, ...ordered);
+        game.log('倒れた仲間を後ろへ下げ、隊列を組み直した。');
+        yield 1;
+      }
+    }
     // 前のグループが全滅したら詰める
     B.groups = B.groups.filter(g => liveUnits(g).length > 0);
     if (!B.groups.length) B.result = 'win';
