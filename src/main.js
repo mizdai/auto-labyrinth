@@ -246,10 +246,19 @@ function openChar(c) {
   const stats = STATS.map(k => `<td>${STAT_NAMES[k]}</td><td>${c.stats[k]}</td>`);
   // 装備名の横に性能：武器はダメージ（例 1d8+1）、防具・装身具はACの下がる量
   const perf = (it) => {
-    if (it.type === 'weapon') return diceStr(it.dmg);
     const parts = [];
-    if (it.ac) parts.push(String(it.ac));
-    if (it.regen) parts.push('再生');
+    if (it.type === 'weapon') {
+      parts.push(diceStr(it.dmg));
+      if (it.hit) parts.push(`命中${it.hit > 0 ? '+' : ''}${it.hit}`);
+      if (it.slay) parts.push({ undead: '不死特攻', dragon: '竜特攻', caster: '術者特攻' }[it.slay] || '特攻');
+      if (it.extraAtk) parts.push(`攻撃回数+${it.extraAtk}`);
+      if (it.crit) parts.push('急所');
+    } else {
+      if (it.ac) parts.push(String(it.ac));
+      if (it.regen) parts.push('再生');
+      if (it.save) parts.push('抵抗');
+    }
+    if (it.cursed) parts.push('呪い');
     return parts.join('・');
   };
   const eqName = (s) => {
