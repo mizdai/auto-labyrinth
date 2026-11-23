@@ -709,14 +709,26 @@ export class Game {
     const gold = R.dice(floor * 2, 30) + (guaranteed ? floor * 50 : 0);
     this.gold += gold;
     this.stats.chests++;
-    let msg = `宝箱には${gold}Gが入っていた。`;
+    this.log(`宝箱には${gold}Gが入っていた。`, 'good');
+    yield 1;
+    // アイテムは最大3個。1個目は玄室・ボス75%／通常45%、2個目以降はそれぞれ35%／20%
+    let n = 0;
     if (R.chance(guaranteed ? 0.75 : 0.45)) {
-      const it = this.dropItem(floor);
-      if (this.bag.length < 24) { this.bag.push({ id: it.id, identified: it.floor === 0 }); msg += `${it.floor === 0 ? it.name : it.unknown}を見つけた。`; }
-      else msg += '荷物がいっぱいで持ちきれなかった。';
+      n = 1;
+      while (n < 3 && R.chance(guaranteed ? 0.35 : 0.2)) n++;
     }
-    this.log(msg, 'good');
-    yield 2;
+    for (let i = 0; i < n; i++) {
+      const it = this.dropItem(floor);
+      const name = it.floor === 0 ? it.name : it.unknown;
+      if (this.bag.length < 24) {
+        this.bag.push({ id: it.id, identified: it.floor === 0 });
+        this.log(`${name}を見つけた。`, 'good');
+      } else {
+        this.log(`${name}は持ちきれなかった。`);
+      }
+      yield 1;
+    }
+    yield 1;
   }
 
   dropItem(floor) {
