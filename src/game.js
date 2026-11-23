@@ -4,7 +4,7 @@ import { CLASSES, SPELL_BY_ID, INN_ROOMS, TEMPLE_COST } from './data.js';
 import { ITEMS, SLOTS, SHOP_BASE, itemName } from './items.js';
 import {
   createCharacter, isAlive, canAct, restoreMP, tryLevelUp, itemScore, canEquip,
-  canCast, roleOf, getNextId, setNextId, maxSlots,
+  canCast, roleOf, getNextId, setNextId, maxSlots, charAC,
 } from './character.js';
 import { getFloor, findPath, W, H, DX, DY, DIR_NAMES, MAX_FLOOR, MAP_VERSION, THEMES } from './dungeon.js';
 import { battle, makeEncounter, bossEncounter, damageChar } from './combat.js';
@@ -221,12 +221,21 @@ export class Game {
     this.sortParty();
   }
 
+  // 隊列：前列（先頭3人）は「前列向きの点数」の高い順。職業に加え、HP・AC・レベルを見る。
+  // パーティの平均レベルの半分に届かない仲間は、職業に関係なく後列へ
   sortParty() {
-    const rank = (c) => {
-      if (!canAct(c)) return 10;
-      return { front: 0, mid: 1, back: c.cls === 'thief' ? 2 : 3 }[roleOf(c)];
-    };
-    this.party = this.party.map((c, i) => [c, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(x => x[0]);
+    const able = this.party.filter(canAct);
+    const avg = able.length ? able.reduce((t, c) => t + c.level, 0) / able.length : 1;
+    const roleBase = (c) => ({ front: 60, mid: 35 }[roleOf(c)] ?? (c.cls === 'thief' ? 20 : 0));
+    const frontScore = (c) => roleBase(c) + Math.min(c.maxhp, 120) * 0.4 + (10 - charAC(c)) * 2 + c.level
+      - (c.level < avg * 0.5 ? 200 : 0);
+    const backRank = (c) => ({ front: 0, mid: 1 }[roleOf(c)] ?? (c.cls === 'thief' ? 2 : 3));
+    const idx = new Map(this.party.map((c, i) => [c, i]));
+    const front = [...able].sort((a, b) => frontScore(b) - frontScore(a) || idx.get(a) - idx.get(b)).slice(0, 3);
+    front.sort((a, b) => backRank(a) - backRank(b) || idx.get(a) - idx.get(b));
+    const rest = able.filter(c => !front.includes(c)).sort((a, b) => backRank(a) - backRank(b) || b.level - a.level || idx.get(a) - idx.get(b));
+    const down = this.party.filter(c => !canAct(c));
+    this.party = [...front, ...rest, ...down];
   }
 
   *inn() {

@@ -181,10 +181,17 @@ export function shouldReturn(game) {
   if (c.hasHealer && c.healMP < 0.15 && c.hp < 0.8) return '回復の呪文が尽きた';
   if (c.mageMP < 0.1 && game.floor >= 3 && c.hp < 0.9) return '呪文が尽きた';
   if (game.party.some(x => x.poison) && !game.party.some(x => canCast(x, SPELL_BY_ID.gedoku)) && !game.bag.some(e => e.identified && ITEMS[e.id].use === 'cure')) return '毒を治すため';
-  if (game.party.some(isAlive) && game.party.filter(isAlive).some(x => x.exp >= nextExp(x)) && c.hp < 0.85 && game.floor <= 2 && partyLevel(game) < 6) return 'レベルアップのため';
+  // レベル上げ：宿屋で上がるはずのレベルがたまっていたら戻る
+  {
+    const al = game.party.filter(isAlive);
+    const avg = partyLevel(game);
+    const pending = (x) => { let n = 0; while (n < 30 && x.exp >= expFor(x.cls, x.level + n + 1)) n++; return n; };
+    const ready = al.filter(x => pending(x) > 0);
+    if (ready.some(x => x.level <= avg - 3) || ready.some(x => pending(x) >= 3)) return 'レベルアップのため';
+  }
   return null;
 }
-import { expNext as nextExp } from './character.js';
+import { expNext as nextExp, expFor } from './character.js';
 
 // 野営での回復計画：[caster, spell, target] を返す
 // hurtBelow: この割合未満のHPの仲間を回復対象にする
