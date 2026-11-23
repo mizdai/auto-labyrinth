@@ -5,7 +5,8 @@ import { drawView, drawMap, drawBattle, drawChest, poseOf, preloadSprites, prelo
 import { MONSTERS } from './monsters.js';
 import { CLASSES, RACES, ALIGN_NAMES, STAT_NAMES, STATS, STATUS_NAMES, SCHOOL_NAMES } from './data.js';
 import { ITEMS, SLOTS, SLOT_NAMES, itemName } from './items.js';
-import { charAC, expNext, maxSlots, knownSpells, isAlive } from './character.js';
+import { charAC, expNext, maxSlots, knownSpells, isAlive, weaponDice } from './character.js';
+import { diceStr } from './rng.js';
 import { DIR_NAMES } from './dungeon.js';
 
 const $ = (s) => document.querySelector(s);
@@ -243,7 +244,21 @@ function openChar(c) {
   if (!c) return;
   const cl = CLASSES[c.cls];
   const stats = STATS.map(k => `<td>${STAT_NAMES[k]}</td><td>${c.stats[k]}</td>`);
-  const eq = SLOTS.map(s => `<tr><td>${SLOT_NAMES[s]}</td><td>${c.equip[s] ? ITEMS[c.equip[s].id].name : '―'}</td></tr>`).join('');
+  // 装備名の横に性能：武器はダメージ（例 1d8+1）、防具・装身具はACの下がる量
+  const perf = (it) => {
+    if (it.type === 'weapon') return diceStr(it.dmg);
+    const parts = [];
+    if (it.ac) parts.push(String(it.ac));
+    if (it.regen) parts.push('再生');
+    return parts.join('・');
+  };
+  const eqName = (s) => {
+    const e = c.equip[s];
+    if (!e) return s === 'weapon' && c.cls === 'ninja' ? `素手 (${diceStr(weaponDice(c))})` : '―';
+    const it = ITEMS[e.id], p = perf(it);
+    return p ? `${it.name} (${p})` : it.name;
+  };
+  const eq = SLOTS.map(s => `<tr><td>${SLOT_NAMES[s]}</td><td>${eqName(s)}</td></tr>`).join('');
   const ms = maxSlots(c);
   // 職業が使える系統は、まだ覚えていないレベルも 0/0 で表示
   const slots = Object.keys(cl.spells).map(sc => `<tr><td>${SCHOOL_NAMES[sc]}</td><td>${c.mp[sc].map((v, i) => `<span class="slot">${ms[sc][i] ? v : 0}/${ms[sc][i]}</span>`).join('')}</td></tr>`).join('');
