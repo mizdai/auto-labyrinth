@@ -54,4 +54,5 @@ node tools/diag.mjs <seed> <最大手数>  # 階ごとの全滅数・撤退理�
 node tools/lairloop.mjs <seed> <最大手数>  # 玄室からの逃走の繰り返しと帰還中の全滅
 node tools/loopcheck.mjs <開始seed> <seed数> <最大手数>  # 狭い範囲を往復し続ける状態の検出
 node tools/lairtrap.mjs  # 玄室の部屋の中から始めたときに往復しないことの確認
+node tools/teleportcheck.mjs  # 帰還中に知らない場所へ飛ばされても帰れることの確認
 ```

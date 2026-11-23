@@ -457,6 +457,12 @@ export class Game {
       };
       let path = findPath(F, known, this.x, this.y, goal, avoid);
       if (!path || !path.length) {
+        // 知っている道では行き先にたどり着けない（テレポーターで知らない場所に飛ばされた等）：
+        // まず近くの未踏の区画を探索して、道を見つける
+        const unexplored = (x, y) => !known[y * W + x];
+        path = findPath(F, known, this.x, this.y, unexplored, avoid);
+      }
+      if (!path || !path.length) {
         stuck++;
         if (stuck > 3) { // 行き先が見つからない：ランダムに歩く
           const dirs = [0, 1, 2, 3].filter(d => F.passable(this.x, this.y, d));
