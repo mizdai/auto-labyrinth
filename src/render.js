@@ -154,21 +154,41 @@ function drawMark(ctx, it, toCam, proj, size, camA) {
         default: return P(0.8 - f, 0.8 - r, hh);  // 西向き
       }
     };
-    const n = 4, dh = 0.15;
-    const prof = [];
-    // 段の並び：奥の縁から手前に向かって、1段ずつ上る（天井）／下りる（床）。
-    // 穴の外にはみ出して見えるが、階段として読み取りやすいので切り抜かない
-    for (let k = 0; k < n; k++) {
-      const t = 1 - k / n;
-      prof.push([t, h0 + (up ? dh : -dh) * k], [t, h0 + (up ? dh : -dh) * (k + 1)]);
-    }
-    prof.push([0, h0 + (up ? dh : -dh) * n]);
     const prev = ctx.lineWidth;
     ctx.lineWidth = Math.max(1, prev * 0.8);
-    for (let i = 0; i < prof.length; i++) {
-      const [t, hh] = prof[i];
-      strokeSeg(ctx, Q(t, 0, hh), Q(t, 1, hh), proj);                  // 段の横線
-      if (i > 0) for (const sl of [0, 1]) strokeSeg(ctx, Q(prof[i - 1][0], sl, prof[i - 1][1]), Q(t, sl, hh), proj); // 側面の段々
+    // 面を黒で塗ってから縁取る（奥の線が透けないように）
+    const face = (a, b, c, d) => {
+      const poly2 = clipNear([a, b, c, d]);
+      if (poly2.length < 3) return;
+      const q = poly2.map(proj);
+      ctx.beginPath();
+      q.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+      ctx.closePath();
+      ctx.fillStyle = '#000'; ctx.fill(); ctx.stroke();
+    };
+    if (up) {
+      // 上り：手前の床から、奥で天井の開口部へ届く階段（区画の中に置く）
+      const n = 5;
+      for (let k = n - 1; k >= 0; k--) {                 // 奥の段から手前へ描く
+        const t0 = k / n, t1 = (k + 1) / n, hb = k / n, ht = (k + 1) / n;
+        face(Q(t0, 0, ht), Q(t1, 0, ht), Q(t1, 1, ht), Q(t0, 1, ht));   // 踏み面
+        face(Q(t0, 0, hb), Q(t0, 1, hb), Q(t0, 1, ht), Q(t0, 0, ht));   // 蹴上げ
+      }
+    } else {
+      // 下り：床の開口部から、奥の縁を起点に手前へ向かって下りていく段
+      // （穴の外にはみ出して見えるが、階段として読み取りやすいので切り抜かない）
+      const n = 4, dh = 0.15;
+      const prof = [];
+      for (let k = 0; k < n; k++) {
+        const t = 1 - k / n;
+        prof.push([t, h0 - dh * k], [t, h0 - dh * (k + 1)]);
+      }
+      prof.push([0, h0 - dh * n]);
+      for (let i = 0; i < prof.length; i++) {
+        const [t, hh] = prof[i];
+        strokeSeg(ctx, Q(t, 0, hh), Q(t, 1, hh), proj);
+        if (i > 0) for (const sl of [0, 1]) strokeSeg(ctx, Q(prof[i - 1][0], sl, prof[i - 1][1]), Q(t, sl, hh), proj);
+      }
     }
     ctx.lineWidth = prev;
     // 開口部の縁を段の線の上から描き直す
