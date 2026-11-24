@@ -7,7 +7,7 @@ export const W = 20, H = 20;
 export const DX = [0, 1, 0, -1], DY = [-1, 0, 1, 0];
 export const DIR_NAMES = ['北', '東', '南', '西'];
 export const OPEN = 0, WALL = 1, DOOR = 2, SEAL = 3;  // SEAL: 近道の扉（開通するまで通れない）
-export const MAP_VERSION = 6;
+export const MAP_VERSION = 7;
 export const MAX_FLOOR = 10;
 
 export class Floor {
@@ -97,13 +97,19 @@ export function floorTheme(worldSeed, floor) {
   return r.pick(['A', 'B', 'C', 'D', 'E'].filter(t => t !== prev));
 }
 
+// エレベーターの縦穴の座標：冒険ごとに1つ決まり、地下1〜9階で共通（迷宮の中央寄り）
+export function elevatorPos(worldSeed) {
+  const r = new Rng((worldSeed * 13 + 777) >>> 0);
+  return { x: r.range(6, 13), y: r.range(6, 13) };
+}
+
 function generateFloor(worldSeed, floor) {
   // 上り階段の位置は1つ上の階の下り階段と一致させる
   const up = floor === 1 ? { x: 0, y: H - 1 } : getFloor(worldSeed, floor - 1).down;
   const theme = floorTheme(worldSeed, floor);
   const rng = new Rng((worldSeed * 7919 + floor * 104729) >>> 0);
   for (let attempt = 0; attempt < 80; attempt++) {
-    const F = theme === 'F' ? tryGenerate(rng, floor, up, theme, attempt < 40) : tryGenerateOpen(rng, floor, up, theme, attempt < 60);
+    const F = theme === 'F' ? tryGenerate(rng, floor, up, theme, attempt < 40) : tryGenerateOpen(rng, floor, up, theme, attempt < 60, elevatorPos(worldSeed));
     if (F) return F;
   }
   // どうしても作れない場合は、入り組んだ通路のテーマで作る
@@ -583,7 +589,7 @@ const OPEN_THEMES = {
   E: { gap: [1, 0.9, 0.85, 0.75, 0.6], gapW: 1, leafMax: 4, leafArea: 9, stopP: 0.20, hallP: 0.08, clusterP: 0.25, nookP: 0.15, plazaP: 0.00, solidP: 0.04, extra: [0, 0], tree: true },
 };
 
-function tryGenerateOpen(rng, floor, up, theme, needShortcut) {
+function tryGenerateOpen(rng, floor, up, theme, needShortcut, shaft) {
   const P = OPEN_THEMES[theme];
   const F = new Floor(floor);
   F.theme = theme;
@@ -686,6 +692,15 @@ function tryGenerateOpen(rng, floor, up, theme, needShortcut) {
     if (area >= 12 && rng.chance(P.hallP)) rooms[id].hall = true;   // 広間（中に何もない大部屋）
   }
   for (const [x, y, d] of innerDoors) setW(x, y, d, DOOR);
+  // エレベーター：縦穴の区画を、四方を壁で囲んだ1×1の部屋にする。
+  // 扉はこのあとの扉付けで、全体がつながるようにつく
+  if (floor < MAX_FLOOR && shaft) {
+    if (shaft.x === up.x && shaft.y === up.y) return null;
+    const c = F.cell(shaft.x, shaft.y);
+    c.room = -1; c.solid = false; c.type = 'elevator';
+    for (let d = 0; d < 4; d++) setW(shaft.x, shaft.y, d, WALL);
+    F.elevator = { x: shaft.x, y: shaft.y };
+  }
 
   // 3. 通路だけを木の形にする（⑤：輪を作らない）
   const isCorr = (x, y) => F.inside(x, y) && roomOf(x, y) < 0 && !F.cell(x, y).solid;
@@ -821,7 +836,8 @@ function tryGenerateOpen(rng, floor, up, theme, needShortcut) {
   const dr = rooms[downRoom];
   let target = null;
   for (let yy = dr.y; yy < dr.y + dr.h; yy++) for (let xx = dr.x; xx < dr.x + dr.w; xx++)
-    if (!target || dist[idx(xx, yy)] > dist[idx(target.x, target.y)]) target = { x: xx, y: yy };
+    if (roomOf(xx, yy) === downRoom && (!target || dist[idx(xx, yy)] > dist[idx(target.x, target.y)])) target = { x: xx, y: yy };
+  if (!target) return null;
   if (floor < MAX_FLOOR) { F.down = target; F.cell(target.x, target.y).type = 'down'; }
   else { F.boss = target; F.cell(target.x, target.y).type = 'boss'; }
 
@@ -830,7 +846,8 @@ function tryGenerateOpen(rng, floor, up, theme, needShortcut) {
   let best = null;
   for (let yy = dr.y; yy < dr.y + dr.h; yy++) for (let xx = dr.x; xx < dr.x + dr.w; xx++) for (let d = 0; d < 4; d++) {
     const nx = xx + DX[d], ny = yy + DY[d];
-    if (!F.inside(nx, ny) || roomOf(nx, ny) === downRoom || F.wall(xx, yy, d) !== WALL || dist[idx(nx, ny)] < 0) continue;
+    if (roomOf(xx, yy) !== downRoom || !F.inside(nx, ny) || roomOf(nx, ny) === downRoom || F.wall(xx, yy, d) !== WALL || dist[idx(nx, ny)] < 0) continue;
+    if (F.cell(nx, ny).type === 'elevator') continue;
     const via = dist[idx(nx, ny)] + 1 + Math.abs(xx - target.x) + Math.abs(yy - target.y);
     const gain = closedD - via;
     if (!best || gain > best.gain) best = { x: xx, y: yy, d, gain };
@@ -856,32 +873,6 @@ function tryGenerateOpen(rng, floor, up, theme, needShortcut) {
     F.shortcutPath = path;
     F.setWall(best.x, best.y, best.d, SEAL);
   } else if (needShortcut) return null;
-
-  // 7. エレベーター：上り階段と下り階段の中間あたりの通路に、壁で囲った1×1の部屋を置く。
-  //    もともと通れた側は扉、通れなかった側は壁のまま（新しい抜け道を作らない）
-  if (floor < MAX_FLOOR) {
-    const d2 = F.distances(up.x, up.y);
-    const total = d2[idx(target.x, target.y)];
-    const cands = [];
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const c = F.cell(x, y);
-      if (c.room >= 0 || c.type || c.solid || !F.isOpenCell(x, y)) continue;
-      if (F.shortcut && (F.shortcutPath || []).some(p => p.x === x && p.y === y)) continue;
-      const v = d2[idx(x, y)];
-      if (v < 0) continue;
-      cands.push({ x, y, score: Math.abs(v / Math.max(1, total) - 0.5) });
-    }
-    cands.sort((a, b) => a.score - b.score);
-    const pick = cands.length ? rng.pick(cands.slice(0, Math.max(1, Math.ceil(cands.length * 0.15)))) : null;
-    if (!pick) return null;
-    for (let d = 0; d < 4; d++) {
-      if (!F.inside(pick.x + DX[d], pick.y + DY[d])) continue;
-      const w = F.wall(pick.x, pick.y, d);
-      if (w === OPEN) F.setWall(pick.x, pick.y, d, DOOR);
-    }
-    F.elevator = { x: pick.x, y: pick.y };
-    F.cell(pick.x, pick.y).type = 'elevator';
-  }
 
   F.rooms = rooms;
   decorate(F, rng, floor, up, rooms, null, startRoom);
