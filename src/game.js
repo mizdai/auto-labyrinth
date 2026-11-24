@@ -423,15 +423,7 @@ export class Game {
           this.mode = 'return';
           this.log(`${why}、地上へ引き返す。`, 'sys');
           yield 1;
-          const caster = this.party.find(c => canCast(c, SPELL_BY_ID.kikan)) || this.party.find(c => canCast(c, SPELL_BY_ID.teni));
-          if (caster && this.floor >= 3) {
-            const sp = canCast(caster, SPELL_BY_ID.kikan) ? SPELL_BY_ID.kikan : SPELL_BY_ID.teni;
-            caster.mp[sp.school][sp.lv - 1]--;
-            this.log(`${caster.name}は${sp.name}を唱えた。一行は光に包まれ、城下町へ戻った。`, 'spell');
-            yield 2;
-            this.location = 'town';
-            return;
-          }
+          if (this.floor >= 3 && (yield* this.castReturn())) return;
         }
       }
 
@@ -498,7 +490,17 @@ export class Game {
       {
         const nc = F.cell(this.x + DX[d], this.y + DY[d]);
         const nlid = this.lairIdAt(F, this.x + DX[d], this.y + DY[d]);
-        if (nlid !== null && nlid !== this.lairIdAt(F, this.x, this.y) && !this.lairsCleared.includes(nlid) && label !== 'lair' && partyCondition(this).hp < 0.8 && sinceCamp > 0) {
+        const entering = nlid !== null && nlid !== this.lairIdAt(F, this.x, this.y) && !this.lairsCleared.includes(nlid) && label !== 'lair';
+        // 一度逃げた玄室（避けられずに入る＝逃げずに戦い切る玄室）の手前：
+        // 帰還の呪文があれば地上へ帰り、なければできるだけ全員を回復させてから入る
+        if (entering && this.lairsFled.includes(nlid)) {
+          if (yield* this.castReturn('避けられない玄室の手前で、')) return;
+          if (sinceCamp > 0 && this.party.some(c => isAlive(c) && c.status !== 'stoned' && c.hp < c.maxhp)) {
+            const did = yield* this.camp(1.0);
+            sinceCamp = 0;
+            if (did) continue;
+          }
+        } else if (entering && partyCondition(this).hp < 0.8 && sinceCamp > 0) {
           const did = yield* this.camp();
           sinceCamp = 0;
           if (did) continue;
@@ -605,6 +607,18 @@ export class Game {
     if (room < 0) return null;
     if (!F._lairSet) F._lairSet = new Set(F.lairs.map(l => l.id));
     return F._lairSet.has(room) ? room : null;
+  }
+
+  // 帰還の呪文（キカン・テンイ）で地上へ。唱えられる仲間がいなければ false
+  *castReturn(prefix = '') {
+    const caster = this.party.find(c => canCast(c, SPELL_BY_ID.kikan)) || this.party.find(c => canCast(c, SPELL_BY_ID.teni));
+    if (!caster) return false;
+    const sp = canCast(caster, SPELL_BY_ID.kikan) ? SPELL_BY_ID.kikan : SPELL_BY_ID.teni;
+    caster.mp[sp.school][sp.lv - 1]--;
+    this.log(`${prefix}${caster.name}は${sp.name}を唱えた。一行は光に包まれ、城下町へ戻った。`, 'spell');
+    yield 2;
+    this.location = 'town';
+    return true;
   }
 
   // 見通し：壁のない方向の隣の区画と、正面にまっすぐ見通せる区画（扉の先と暗闇は見えない）
