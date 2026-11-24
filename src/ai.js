@@ -187,7 +187,11 @@ export function shouldReturn(game) {
     const avg = partyLevel(game);
     const pending = (x) => { let n = 0; while (n < 30 && x.exp >= expFor(x.cls, x.level + n + 1)) n++; return n; };
     const ready = al.filter(x => pending(x) > 0);
-    if (ready.some(x => x.level <= avg - 3) || ready.some(x => pending(x) >= 3)) return 'レベルアップのため';
+    // 低レベルの補充メンバーの育成はいつでも。たまったレベルの消化は、目標の階に対してまだ十分強くないときだけ
+    const strongEnough = avg >= recommendedLevel(targetFloor(game)) + 3;
+    // 「低レベルの仲間」は、平均より3以上低く、かつ平均の7割以下（職業ごとの上がり方の差では反応しない）
+    const lagging = (x) => x.level <= Math.min(avg - 3, avg * 0.7);
+    if (ready.some(lagging) || (!strongEnough && ready.some(x => pending(x) >= 3))) return 'レベルアップのため';
   }
   return null;
 }

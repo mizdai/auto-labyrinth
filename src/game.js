@@ -647,7 +647,9 @@ export class Game {
       // すでに転移装置の上にいれば、そのまま転移する（経路探索は自分の区画を目的地にできないため）
       if ((this.x === E.x && this.y === E.y) || findPath(F, known, this.x, this.y, toLift)) return { goal: toLift, label: 'warp', avoidBoss: true };
     }
-    if (this.floor < tf && F.down && isKnown(F.down.x, F.down.y)) {
+    // 階を探索し尽くしてから下りる（転移装置や玄室を取りこぼさないため）
+    const fullyExplored = !findPath(F, known, this.x, this.y, (x, y) => !isKnown(x, y));
+    if (this.floor < tf && F.down && isKnown(F.down.x, F.down.y) && fullyExplored) {
       return { goal: (x, y) => x === F.down.x && y === F.down.y, label: 'down', avoidBoss: true };
     }
     // ボス
