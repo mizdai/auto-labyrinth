@@ -1,6 +1,6 @@
 // キャラクター生成・能力計算
 import { R, diceAvg } from './rng.js';
-import { RACES, CLASSES, STATS, SPELLS, NAME_SYLLABLES, NAME_ENDINGS } from './data.js';
+import { RACES, CLASSES, STATS, STAT_NAMES, SPELLS, NAME_SYLLABLES, NAME_ENDINGS } from './data.js';
 import { ITEMS, SLOTS } from './items.js';
 
 let nextId = 1;
@@ -172,25 +172,33 @@ export function expFor(cls, level) {
 export const expNext = (c) => expFor(c.cls, c.level + 1);
 
 // 宿で呼ぶ。上がった場合はメッセージ配列を返す
+// 宿屋で呼ぶ。上がった場合は、1レベルごとに
+//   「〇〇はレベル6に上がった！」「HP 53→71　力 15→16」「イヤシの呪文を覚えた！」
+// の形のメッセージを返す（2行目は変化した値だけ、3行目は覚えた呪文があるときだけ）
 export function tryLevelUp(c) {
   const msgs = [];
   while (c.exp >= expNext(c)) {
+    const beforeSpells = new Set(knownSpells(c).map(s => s.id));
+    const hpBefore = c.maxhp;
     c.level++;
     const cl = CLASSES[c.cls];
     const gain = Math.max(1, R.d(cl.hd) + vitBonus(c));
     c.maxhp += gain; c.hp += gain;
-    const changes = [];
+    const changes = [`HP ${hpBefore}→${c.maxhp}`];
     for (const k of STATS) {
       const r = R.next();
       const downP = c.age >= 40 ? 0.15 : 0.04;
-      if (r < 0.28 && c.stats[k] < 18) { c.stats[k]++; changes.push(`${k}+`); }
-      else if (r > 1 - downP && c.stats[k] > 3) { c.stats[k]--; changes.push(`${k}-`); }
+      const old = c.stats[k];
+      if (r < 0.28 && c.stats[k] < 18) c.stats[k]++;
+      else if (r > 1 - downP && c.stats[k] > 3) c.stats[k]--;
+      if (c.stats[k] !== old) changes.push(`${STAT_NAMES[k]} ${old}→${c.stats[k]}`);
     }
-    const before = knownSpells(c).length;
     const m = maxSlots(c);
     for (const sc of ['mage', 'priest']) for (let i = 0; i < 7; i++) c.mp[sc][i] = Math.max(c.mp[sc][i], m[sc][i]);
-    const learned = knownSpells(c).length - before;
-    msgs.push(`${c.name}はレベル${c.level}になった！（HP+${gain}${learned > 0 ? '、新しい呪文を覚えた' : ''}）`);
+    const learned = knownSpells(c).filter(s => !beforeSpells.has(s.id)).map(s => s.name);
+    msgs.push(`${c.name}はレベル${c.level}に上がった！`);
+    msgs.push(changes.join('　'));
+    if (learned.length) msgs.push(`${learned.join('、')}の呪文を覚えた！`);
   }
   return msgs;
 }
