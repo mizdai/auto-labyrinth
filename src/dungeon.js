@@ -962,31 +962,60 @@ function decorate(F, rng, floor, up, rooms, order, startRoom) {
 
 // 既知情報に基づく経路探索。visited された区画の壁だけを知っているものとする。
 // goal(x,y) を満たす最寄り区画への経路（方向の配列）を返す
-export function findPath(F, known, sx, sy, goal, avoid = null) {
-  const prev = new Int16Array(W * H).fill(-1);
-  const pdir = new Int8Array(W * H).fill(-1);
-  const seen = new Uint8Array(W * H);
-  const q = [sy * W + sx]; seen[sy * W + sx] = 1;
-  let head = 0;
-  const deferred = [];
-  while (head < q.length || deferred.length) {
-    if (head >= q.length) { q.push(deferred.shift()); }
-    const idx = q[head++];
+export function findPath(F, known, sx, sy, goal, avoid = null, startDir = -1) {
+  // 歩数＋曲がる回数（90度で1、180度で2）が最小の経路。避けたいマスは大きな手間として扱い、
+  // 他に道がないときだけ通る。未踏の区画の先は分からないので、そこからは広げない
+  const N = W * H * 4;
+  const cost = new Float64Array(N).fill(Infinity);
+  const prev = new Int32Array(N).fill(-1);
+  const heap = [];
+  const push = (c, st) => {
+    heap.push([c, st]);
+    let i = heap.length - 1;
+    while (i > 0) { const pa = (i - 1) >> 1; if (heap[pa][0] <= heap[i][0]) break; [heap[pa], heap[i]] = [heap[i], heap[pa]]; i = pa; }
+  };
+  const pop = () => {
+    const top = heap[0], last = heap.pop();
+    if (heap.length) {
+      heap[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
+        if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+        if (m === i) break;
+        [heap[m], heap[i]] = [heap[i], heap[m]]; i = m;
+      }
+    }
+    return top;
+  };
+  const start = sy * W + sx;
+  const d0 = startDir >= 0 ? startDir : 0;
+  for (let d = 0; d < 4; d++) {
+    const st = start * 4 + d;
+    const c = startDir >= 0 ? Math.min(Math.abs(d - d0), 4 - Math.abs(d - d0)) : 0;
+    cost[st] = c; push(c, st);
+  }
+  while (heap.length) {
+    const [c, st] = pop();
+    if (c > cost[st]) continue;
+    const idx = st >> 2, dir = st & 3;
     const x = idx % W, y = (idx / W) | 0;
-    if (idx !== sy * W + sx && goal(x, y)) {
+    if (idx !== start && goal(x, y)) {
       const path = [];
-      let cur = idx;
-      while (cur !== sy * W + sx) { path.unshift(pdir[cur]); cur = prev[cur]; }
+      for (let cur = st; cur >= 0 && (cur >> 2) !== start; cur = prev[cur]) path.unshift(cur & 3);
       return path;
     }
-    if (!known[idx] && idx !== sy * W + sx) continue; // 未踏区画の先は分からない
+    if (idx !== start && !known[idx]) continue;   // 未踏区画の先は分からない
     for (let d = 0; d < 4; d++) {
       if (!F.passable(x, y, d)) continue;
-      const n = (y + DY[d]) * W + (x + DX[d]);
-      if (seen[n]) continue;
-      seen[n] = 1; prev[n] = idx; pdir[n] = d;
-      if (avoid && avoid(n % W, (n / W) | 0) && !goal(n % W, (n / W) | 0)) deferred.push(n);
-      else q.push(n);
+      const nx = x + DX[d], ny = y + DY[d], n = ny * W + nx;
+      const turn = Math.min(Math.abs(d - dir), 4 - Math.abs(d - dir));
+      let nc = c + 1 + turn;
+      if (avoid && avoid(nx, ny) && !goal(nx, ny)) nc += 1000;
+      const ns = n * 4 + d;
+      if (nc < cost[ns]) { cost[ns] = nc; prev[ns] = st; push(nc, ns); }
     }
   }
   return null;

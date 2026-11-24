@@ -20,4 +20,4 @@ g.onLog = (t) => {
 };
 const it = g.run();
 for (let i = 0; i < maxTicks && !g.cleared; i++) it.next();
-console.log(JSON.stringify({ steps: g.stats.steps, seed, lairFlees, repeatFlees, wipes, wipeInReturn, deepest: g.deepest, cleared: g.cleared }));
+console.log(JSON.stringify({ steps: g.stats.steps, turns: g.stats.turns || 0, seed, lairFlees, repeatFlees, wipes, wipeInReturn, deepest: g.deepest, cleared: g.cleared }));

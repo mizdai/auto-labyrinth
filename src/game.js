@@ -6,7 +6,7 @@ import {
   createCharacter, isAlive, canAct, restoreMP, tryLevelUp, itemScore, canEquip,
   canCast, roleOf, getNextId, setNextId, maxSlots, charAC,
 } from './character.js';
-import { getFloor, findPath, W, H, DX, DY, DIR_NAMES, MAX_FLOOR, MAP_VERSION, THEMES } from './dungeon.js';
+import { getFloor, findPath, W, H, DX, DY, DIR_NAMES, MAX_FLOOR, MAP_VERSION, THEMES, OPEN } from './dungeon.js';
 import { battle, makeEncounter, bossEncounter, damageChar } from './combat.js';
 import {
   shouldReturn, targetFloor, readyFor, campPlan, partyCondition, policy, partyLevel, recommendedLevel,
@@ -468,12 +468,12 @@ export class Game {
         if (lid !== null && !this.lairsCleared.includes(lid) && (weak || this.lairsFled.includes(lid))) return true;
         return c.type === 'pit' || c.type === 'teleport' || c.type === 'alarm' || (avoidBoss && c.type === 'boss' && !this.cleared);
       };
-      let path = findPath(F, known, this.x, this.y, goal, avoid);
+      let path = findPath(F, known, this.x, this.y, goal, avoid, this.dir);
       if (!path || !path.length) {
         // 知っている道では行き先にたどり着けない（テレポーターで知らない場所に飛ばされた等）：
         // まず近くの未踏の区画を探索して、道を見つける
         const unexplored = (x, y) => !known[y * W + x];
-        path = findPath(F, known, this.x, this.y, unexplored, avoid);
+        path = findPath(F, known, this.x, this.y, unexplored, avoid, this.dir);
       }
       if (!path || !path.length) {
         stuck++;
@@ -507,6 +507,7 @@ export class Game {
       // 向きを変える
       if (d !== this.dir) {
         this.dir = d;
+        this.stats.turns = (this.stats.turns || 0) + 1;
         yield 1;
       }
       // 前進
@@ -516,6 +517,7 @@ export class Game {
       this.stats.steps++;
       known[this.y * W + this.x] = 1;
       this.seeRoom(F, known);
+      this.lookAround(F, known);
       yield wasDoor ? 2 : 1;
 
       // 毒
@@ -603,6 +605,23 @@ export class Game {
     if (room < 0) return null;
     if (!F._lairSet) F._lairSet = new Set(F.lairs.map(l => l.id));
     return F._lairSet.has(room) ? room : null;
+  }
+
+  // 見通し：壁のない方向の隣の区画と、正面にまっすぐ見通せる区画（扉の先と暗闇は見えない）
+  lookAround(F, known) {
+    if (F.cell(this.x, this.y).dark) return;
+    const see = (x, y) => { if (F.inside(x, y) && !F.cell(x, y).dark) known[y * W + x] = 1; };
+    for (let d = 0; d < 4; d++) {
+      if (F.wall(this.x, this.y, d) !== OPEN || !F.inside(this.x + DX[d], this.y + DY[d])) continue;
+      see(this.x + DX[d], this.y + DY[d]);
+    }
+    let x = this.x, y = this.y;
+    for (let k = 0; k < 5; k++) {
+      if (F.wall(x, y, this.dir) !== OPEN || !F.inside(x + DX[this.dir], y + DY[this.dir])) break;
+      x += DX[this.dir]; y += DY[this.dir];
+      if (F.cell(x, y).dark) break;
+      see(x, y);
+    }
   }
 
   // 明るい部屋に入ったら、部屋の中全体が見える（地図に載る）
