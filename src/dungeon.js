@@ -97,7 +97,7 @@ export function floorTheme(worldSeed, floor) {
   return r.pick(['A', 'B', 'C', 'D', 'E'].filter(t => t !== prev));
 }
 
-// エレベーターの縦穴の座標：冒険ごとに1つ決まり、地下1〜9階で共通（迷宮の中央寄り）
+// 転移装置の座標：冒険ごとに1つ決まり、地下1〜9階で共通（迷宮の中央寄り）。内部名は elevator のまま
 export function elevatorPos(worldSeed) {
   const r = new Rng((worldSeed * 13 + 777) >>> 0);
   return { x: r.range(6, 13), y: r.range(6, 13) };
@@ -692,7 +692,7 @@ function tryGenerateOpen(rng, floor, up, theme, needShortcut, shaft) {
     if (area >= 12 && rng.chance(P.hallP)) rooms[id].hall = true;   // 広間（中に何もない大部屋）
   }
   for (const [x, y, d] of innerDoors) setW(x, y, d, DOOR);
-  // エレベーター：縦穴の区画を、四方を壁で囲んだ1×1の部屋にする。
+  // 転移装置：その区画を、四方を壁で囲んだ1×1の部屋にする。
   // 扉はこのあとの扉付けで、全体がつながるようにつく
   if (floor < MAX_FLOOR && shaft) {
     if (shaft.x === up.x && shaft.y === up.y) return null;

@@ -31,7 +31,7 @@ export class Game {
     this.location = 'town'; this.floor = 0; this.x = 0; this.y = H - 1; this.dir = 0;
     this.known = {}; this.lairsCleared = []; this.lairsFled = []; this.deepest = 1;
     this.shortcuts = [];   // 近道を開通させた階
-    this.elevators = [];   // 電源を入れたエレベーターの階
+    this.elevators = [];   // 転移装置が作動している階（セーブ互換のため名前は elevators のまま）
     this.mode = 'explore';
     this.cleared = false;
     this.settings = { ...DEFAULT_SETTINGS };
@@ -138,12 +138,6 @@ export class Game {
     this.location = 'dungeon'; this.floor = 1;
     this.x = getFloor(this.seed, 1).up.x; this.y = getFloor(this.seed, 1).up.y; this.dir = 0;
     this.mode = 'explore'; this.lairsCleared = []; this.lairsFled = [];
-    const via = Math.max(0, ...this.elevators.filter(f => f <= tf && f > 1));
-    if (via > 1) {
-      const E = getFloor(this.seed, via).elevator;
-      this.floor = via; this.x = E.x; this.y = E.y;
-      this.log(`エレベーターで地下${via}階へ下りた。`, 'sys');
-    }
     this.knownMap()[this.y * W + this.x] = 1;
     yield 2;
   }
@@ -446,7 +440,8 @@ export class Game {
       const here = F.cell(this.x, this.y);
       // 階段に到着
       if (label === 'up' && here.type === 'up') { yield* this.climb(-1); continue; }
-      if (label === 'up' && here.type === 'elevator' && this.elevatorUpDest() !== null) { yield* this.ride(this.elevatorUpDest()); continue; }
+      if (label === 'up' && here.type === 'elevator' && this.warpUpDest() !== null) { yield* this.ride(this.warpUpDest()); continue; }
+      if (label === 'warp' && here.type === 'elevator' && this.warpDownDest() !== null) { yield* this.ride(this.warpDownDest()); continue; }
       // かんぬきの扉の前に着いた：扉の方を向いて外す
       if (label === 'unbar' && this.x === F.shortcut.x && this.y === F.shortcut.y) {
         if (this.dir !== F.shortcut.d) { this.dir = F.shortcut.d; yield 1; }
@@ -526,12 +521,14 @@ export class Game {
       // 毒
       if (this.stats.steps % 4 === 0) for (const c of this.party) if (c.poison && isAlive(c)) { c.hp -= 1; if (c.hp <= 0) { c.hp = 0; c.status = 'dead'; c.poison = false; this.log(`${c.name}は毒で力尽きた…`, 'bad'); yield 1; } }
 
-      // エレベーター：たどり着いたら電源を入れて、この階を解放
+      // 転移装置：部屋に入ると作動し、この階の転移装置が使えるようになる
       if (F.cell(this.x, this.y).type === 'elevator' && !this.elevators.includes(this.floor)) {
         this.elevators.push(this.floor);
-        this.log('エレベーターの扉を開け、電源を入れた。', 'sys');
+        this.log('転移装置の部屋に入った。', 'sys');
         yield 1;
-        this.log(`地下${this.floor}階までエレベーターで行けるようになった！`, 'good');
+        this.log('転移装置が作動し始めた。', 'good');
+        yield 1;
+        this.log(`地下${this.floor}階の転移装置が使えるようになった！`, 'good');
         yield 2;
       }
 
@@ -633,7 +630,8 @@ export class Game {
       const sc = F.shortcut;
       return { goal: (x, y) => x === sc.x && y === sc.y, label: 'unbar', avoidBoss: true };
     }
-    const upOrLift = (x, y) => (x === F.up.x && y === F.up.y) || (F.elevator && this.elevatorUpDest() !== null && x === F.elevator.x && y === F.elevator.y);
+    // 上へ戻るとき：上り階段か、上へ転移できる転移装置の近い方
+    const upOrLift = (x, y) => (x === F.up.x && y === F.up.y) || (F.elevator && this.warpUpDest() !== null && x === F.elevator.x && y === F.elevator.y);
     if (this.mode === 'return') return { goal: upOrLift, label: 'up', avoidBoss: true };
     const tf = targetFloor(this);
     if (this.floor > tf) return { goal: upOrLift, label: 'up', avoidBoss: true };
@@ -641,6 +639,13 @@ export class Game {
       const E = F.elevator;
       const toLift = (x, y) => x === E.x && y === E.y;
       if (findPath(F, known, this.x, this.y, toLift)) return { goal: toLift, label: 'elevator', avoidBoss: true };
+    }
+    // 下へ向かうとき：この階の転移装置から、目標の階により近い階へ転移できるなら使う
+    if (F.elevator && this.warpDownDest() !== null) {
+      const E = F.elevator;
+      const toLift = (x, y) => x === E.x && y === E.y;
+      // すでに転移装置の上にいれば、そのまま転移する（経路探索は自分の区画を目的地にできないため）
+      if ((this.x === E.x && this.y === E.y) || findPath(F, known, this.x, this.y, toLift)) return { goal: toLift, label: 'warp', avoidBoss: true };
     }
     if (this.floor < tf && F.down && isKnown(F.down.x, F.down.y)) {
       return { goal: (x, y) => x === F.down.x && y === F.down.y, label: 'down', avoidBoss: true };
@@ -671,29 +676,29 @@ export class Game {
     return { goal: (x, y) => x === t.x && y === t.y, label: 'wander', avoidBoss: true };
   }
 
-  // エレベーターで移動（dest = 0 なら城下町）
+  // 転移装置で別の階の転移装置へ移動
   *ride(dest) {
-    if (dest === 0) {
-      this.log('エレベーターで地上へ戻った。', 'sys');
-      yield 2;
-      this.location = 'town';
-      return;
-    }
     const E = getFloor(this.seed, dest).elevator;
-    this.log(`エレベーターで地下${dest}階へ移動した。`, 'sys');
+    this.log(`転移装置で地下${dest}階へ転移した。`, 'sys');
     this.floor = dest; this.x = E.x; this.y = E.y;
     this.lairsCleared = []; this.lairsFled = []; this.lastWander = null; this.unbarFloor = null;
     this.knownMap()[this.y * W + this.x] = 1;
     if (this.mode !== 'return') this.mode = 'explore';
     yield 2;
   }
-  // 今いる階からエレベーターで上へ戻るときの行き先（使えなければ null）
-  elevatorUpDest() {
+  // 上へ戻るときの転移先（使えなければ null）。帰還中は地下1階まで（地上へは転移できない）
+  warpUpDest() {
     if (!this.elevators.includes(this.floor)) return null;
-    if (this.mode === 'return') return 0;
-    const tf = targetFloor(this);
-    const dest = Math.max(0, ...this.elevators.filter(f => f <= tf && f < this.floor));
+    const limit = this.mode === 'return' ? 1 : targetFloor(this);
+    const dest = Math.max(0, ...this.elevators.filter(f => f >= 1 && f <= limit && f < this.floor));
     return dest >= 1 ? dest : null;
+  }
+  // 下へ向かうときの転移先（目標の階を超えない、今より深い一番深い階。使えなければ null）
+  warpDownDest() {
+    if (this.mode === 'return' || !this.elevators.includes(this.floor)) return null;
+    const tf = targetFloor(this);
+    const dest = Math.max(0, ...this.elevators.filter(f => f > this.floor && f <= tf));
+    return dest > this.floor ? dest : null;
   }
 
   *climb(dir) {
