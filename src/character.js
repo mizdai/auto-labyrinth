@@ -163,8 +163,9 @@ export function expFor(cls, level) {
   let t = base;
   for (let l = 3; l <= Math.min(level, 13); l++) t = Math.round(t * 1.72);
   if (level > 13) {
-    const t12 = expFor(cls, 12), t13 = expFor(cls, 13);
-    t = t13 + (level - 13) * Math.round(t13 * 0.6);
+    // Lv13以降：Lv13→14の必要量を基準に、1レベルごとに必要量を10%ずつ増やす
+    const t13 = expFor(cls, 13), inc = Math.round(t13 * 0.6), n = level - 13;
+    t = t13 + Math.round(inc * (n + 0.1 * n * (n - 1) / 2));
   }
   return t;
 }
