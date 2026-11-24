@@ -147,8 +147,13 @@ export function partyLevel(game) {
 }
 // その階に挑むのに必要な平均レベル
 export function recommendedLevel(floor) { return [0, 1, 3, 5, 7, 8, 9, 11, 12, 13, 15][floor] || 15; }
+// その階に連れて行ける最低レベル（全員がこれ以上であること）
+export function minimumLevel(floor) { return Math.max(1, recommendedLevel(floor) - 4); }
 export function readyFor(game, floor) {
-  return partyLevel(game) >= recommendedLevel(floor) + policy(game).levelMargin;
+  const margin = policy(game).levelMargin;
+  const al = game.party.filter(isAlive);
+  const weakest = al.length ? Math.min(...al.map(c => c.level)) : 0;
+  return partyLevel(game) >= recommendedLevel(floor) + margin && weakest >= minimumLevel(floor) + Math.min(0, margin);
 }
 export function targetFloor(game) {
   let f = 1;
