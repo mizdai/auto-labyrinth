@@ -194,9 +194,10 @@ export function shouldReturn(game) {
     const ready = al.filter(x => pending(x) > 0);
     // 低レベルの補充メンバーの育成はいつでも。たまったレベルの消化は、目標の階に対してまだ十分強くないときだけ
     const strongEnough = avg >= recommendedLevel(targetFloor(game)) + 3;
-    // 「低レベルの仲間」は、平均より3以上低く、かつ平均の7割以下（職業ごとの上がり方の差では反応しない）
+    // 「遅れている仲間」は、平均より3以上低く、かつ平均の7割以下（職業ごとの上がり方の差では反応しない）。
+    // その仲間に2レベル分たまったら戻る（1レベルごとに戻ると往復が多すぎるため）
     const lagging = (x) => x.level <= Math.min(avg - 3, avg * 0.7);
-    if (ready.some(lagging) || (!strongEnough && ready.some(x => pending(x) >= 3))) return 'レベルアップのため';
+    if (ready.some(x => lagging(x) && pending(x) >= 2) || (!strongEnough && ready.some(x => pending(x) >= 3))) return 'レベルアップのため';
   }
   return null;
 }
