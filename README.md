@@ -22,6 +22,14 @@
 | 設定 | 探索方針・呪文の使い方・宝箱・パーティ構成、やり直し |
 | パーティの行をタップ | キャラクターの詳細 |
 
+## 名前メンテ画面
+
+`admin.html`（公開URLでは `https://mizdai.github.io/auto-labyrinth/admin.html`）で、アイテム名・未鑑定時の種類名・呪文名を変えられます。
+
+- 「このブラウザで試す」：その端末のブラウザにだけ保存（`localStorage`）
+- 「GitHubに保存」：`data/names.json` をリポジトリに書き込み、全員のゲームに反映（GitHub の Fine-grained トークンで、このリポジトリの Contents: Read and write 権限が必要）
+- ゲームは起動時に `data/names.json` とブラウザ内の上書きを読み込む（`src/names.js`）
+
 ## 構成
 
 ビルド不要の素の ES Modules です。

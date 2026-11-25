@@ -3,6 +3,7 @@ import { Game, SAVE_KEY, COMPOSITIONS } from './game.js';
 import { POLICIES, SPELL_USE, partyLevel, targetFloor } from './ai.js';
 import { drawView, drawMap, drawBattle, drawChest, poseOf, preloadSprites, preloadChest } from './render.js';
 import { MONSTERS } from './monsters.js';
+import { loadNameOverrides } from './names.js';
 import { CLASSES, RACES, ALIGN_NAMES, STAT_NAMES, STATS, STATUS_NAMES, SCHOOL_NAMES } from './data.js';
 import { ITEMS, SLOTS, SLOT_NAMES, itemName } from './items.js';
 import { charAC, expNext, maxSlots, knownSpells, isAlive, weaponDice } from './character.js';
@@ -288,5 +289,5 @@ window.addEventListener('pagehide', save);
 
 preloadSprites(Object.keys(MONSTERS));
 preloadChest();
-boot();
-requestAnimationFrame(frame);
+// 名前の上書き（メンテ画面で編集）を読み込んでから始める
+loadNameOverrides().catch(() => {}).finally(() => { boot(); requestAnimationFrame(frame); });

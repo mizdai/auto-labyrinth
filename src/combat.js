@@ -311,23 +311,24 @@ function onKillQuiet(B, g, u, killer) {
 }
 
 // --- 魔物の行動 ---
+// 魔物が唱える呪文（名前は呪文の定義から引くので、名前を変えると連動する）
 const MON_MAGE = [
   null,
-  [{ n: 'ヒバナ', single: [1, 8] }, { n: 'ネムリ', sleep: true }],
-  [{ n: 'ツララ', single: [3, 6] }],
-  [{ n: 'ホムラ', all: [4, 6] }],
-  [{ n: 'ヒョウガ', all: [6, 6] }],
-  [{ n: 'ライメイ', all: [8, 6] }],
-  [{ n: 'ゴウカ', all: [9, 6] }],
-  [{ n: 'メツボウ', all: [10, 10] }],
+  [{ id: 'hibana', single: [1, 8] }, { id: 'nemuri', sleep: true }],
+  [{ id: 'tsurara', single: [3, 6] }],
+  [{ id: 'homura', all: [4, 6] }],
+  [{ id: 'hyouga', all: [6, 6] }],
+  [{ id: 'raimei', all: [8, 6] }],
+  [{ id: 'gouka', all: [9, 6] }],
+  [{ id: 'metsubou', all: [10, 10] }],
 ];
 const MON_PRIEST = [
   null,
-  [{ n: 'イヤシ', heal: [1, 8] }],
-  [{ n: 'シズメ', silence: true }],
-  [{ n: 'ナオシ', heal: [2, 8] }],
-  [{ n: 'オオイヤシ', heal: [4, 8] }],
-  [{ n: 'イカズチ', single: [6, 8] }],
+  [{ id: 'iyashi', heal: [1, 8] }],
+  [{ id: 'shizume', silence: true }],
+  [{ id: 'naoshi', heal: [2, 8] }],
+  [{ id: 'ooiyashi', heal: [4, 8] }],
+  [{ id: 'ikazuchi', single: [6, 8] }],
 ];
 
 function* monsterAction(game, B, g, u) {
@@ -360,7 +361,7 @@ function* monsterAction(game, B, g, u) {
     for (let l = Math.max(1, plv - 2); l <= Math.min(plv, 5); l++) if (MON_PRIEST[l]) pool.push(...MON_PRIEST[l]);
     let sp = R.pick(pool);
     if (sp.heal && !g.units.some(x => x.hp > 0 && x.hp < x.max * 0.6)) sp = pool.find(s => !s.heal) || sp;
-    game.log(`${m.name}は${sp.n}を唱えた！`, 'bad');
+    game.log(`${m.name}は${SPELL_BY_ID[sp.id].name}を唱えた！`, 'bad');
     yield 1;
     const alive = party.filter(isAlive);
     if (sp.single) { const t = R.pick(alive); if (t) damageChar(game, t, R.dice(sp.single[0], sp.single[1])); }
