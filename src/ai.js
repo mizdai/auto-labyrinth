@@ -120,6 +120,17 @@ function chooseActionsInner(game, B) {
 
     // 2. 攻撃呪文
     if (dg >= spellBar || B.boss || groups.reduce((s, g) => s + liveUnits(g).length, 0) >= 5 && dg >= spellBar * 0.5) {
+      // 障壁：ブレスや全体呪文を使う魔物がいれば、序盤に張る（50%に届くまで重ねる）
+      const harsh = groups.some(g => g.mon.flags.breath || (g.mon.flags.mage || 0) >= 3);
+      if ((harsh || B.boss) && B.round <= 3 && (B.ward || 0) < 0.5 && !groupSpellsCast.has('ward') && usable(c, SPELL_BY_ID.kekkai)) {
+        acts.set(c, { type: 'spell', spell: 'kekkai' }); groupSpellsCast.add('ward'); return;
+      }
+      // 抵抗を下げる：呪文の効きにくい敵がいて、攻撃呪文の使い手がいるとき
+      const resistant = groups.some(g => (g.mon.flags.resist || 0) - (B.resistDown || 0) >= 0.3);
+      const nukers = party.filter(t => canAct(t) && maxSlots(t).mage[2] > 0).length;
+      if (resistant && nukers > 0 && B.round <= 3 && !groupSpellsCast.has('unresist') && usable(c, SPELL_BY_ID.yaburi)) {
+        acts.set(c, { type: 'spell', spell: 'yaburi' }); groupSpellsCast.add('unresist'); return;
+      }
       // 不死を祓う
       const und = groups.find(g => g.mon.flags.undead && !groupSpellsCast.has(g) && liveUnits(g).length >= 2);
       if (und && usable(c, SPELL_BY_ID.harai)) { acts.set(c, { type: 'spell', spell: 'harai', target: und }); groupSpellsCast.add(und); return; }

@@ -68,4 +68,5 @@ node tools/clearlevel.mjs <開始seed> <seed数> <最大手数>  # クリア時�
 node tools/turnrate.mjs <開始seed> <seed数> <最大手数>  # テーマごとの100歩あたりの方向転換回数
 node tools/underlevel.mjs <開始seed> <seed数> <最大手数>  # 最低レベルに届かない仲間を連れて歩いた割合
 node tools/spelluse.mjs <開始seed> <seed数> <最大手数>  # 仲間が唱えた呪文ごとの回数
+node tools/aoedeaths.mjs <開始seed> <seed数> <最大手数>  # ブレス・魔物の呪文で倒れた仲間の数（戦闘100回あたり）
 ```
