@@ -67,4 +67,5 @@ node tools/teleportcheck.mjs  # 帰還中に知らない場所へ飛ばされて
 node tools/clearlevel.mjs <開始seed> <seed数> <最大手数>  # クリア時のパーティの平均レベル
 node tools/turnrate.mjs <開始seed> <seed数> <最大手数>  # テーマごとの100歩あたりの方向転換回数
 node tools/underlevel.mjs <開始seed> <seed数> <最大手数>  # 最低レベルに届かない仲間を連れて歩いた割合
+node tools/spelluse.mjs <開始seed> <seed数> <最大手数>  # 仲間が唱えた呪文ごとの回数
 ```

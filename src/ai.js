@@ -72,7 +72,7 @@ export function bestHeal(c, need) {
 }
 
 function damageSpells(c, kinds) {
-  return SPELLS.filter(s => s.effect === 'damage' && kinds.includes(s.target) && usable(c, s));
+  return SPELLS.filter(s => s.effect === 'damage' && !s.only && kinds.includes(s.target) && usable(c, s));
 }
 
 // 戦闘中の行動選択
@@ -104,7 +104,11 @@ function chooseActionsInner(game, B) {
     const inFront = idx < 3;
     // 呪文を封じられているあいだは、呪文を選ばない（打撃・防御・道具だけ）
     if (!c._silenced) {
-    // 1. 回復
+    // 1. 回復：3人以上が深手なら、味方全体の回復
+    const badlyHurt = party.filter(t => isAlive(t) && t.hp < t.maxhp * 0.55);
+    if (badlyHurt.length >= 3 && usable(c, SPELL_BY_ID.mimegumi) && !healTargets.has('party')) {
+      acts.set(c, { type: 'spell', spell: 'mimegumi' }); healTargets.add('party'); for (const t of badlyHurt) healTargets.add(t); return;
+    }
     const hurt = party.filter(t => isAlive(t) && !healTargets.has(t) && t.hp < t.maxhp * (useMult > 1 ? 0.35 : 0.5)).sort((a, b) => a.hp / a.maxhp - b.hp / b.maxhp)[0];
     if (hurt) {
       const sp = bestHeal(c, hurt.maxhp - hurt.hp);
@@ -112,25 +116,56 @@ function chooseActionsInner(game, B) {
     }
     // 麻痺の治療
     const para = party.find(t => t.status === 'paralyzed' && !healTargets.has(t));
-    if (para && canCast(c, SPELL_BY_ID.gedoku) && dg > 0.3) { acts.set(c, { type: 'spell', spell: 'gedoku', target: para }); healTargets.add(para); return; }
+    if (para && usable(c, SPELL_BY_ID.hogushi) && dg > 0.3) { acts.set(c, { type: 'spell', spell: 'hogushi', target: para }); healTargets.add(para); return; }
 
     // 2. 攻撃呪文
     if (dg >= spellBar || B.boss || groups.reduce((s, g) => s + liveUnits(g).length, 0) >= 5 && dg >= spellBar * 0.5) {
       // 不死を祓う
       const und = groups.find(g => g.mon.flags.undead && !groupSpellsCast.has(g) && liveUnits(g).length >= 2);
-      if (und && canCast(c, SPELL_BY_ID.harai)) { acts.set(c, { type: 'spell', spell: 'harai', target: und }); groupSpellsCast.add(und); return; }
+      if (und && usable(c, SPELL_BY_ID.harai)) { acts.set(c, { type: 'spell', spell: 'harai', target: und }); groupSpellsCast.add(und); return; }
       // 敵全体
       const allSp = damageSpells(c, ['all']).sort((a, b) => diceAvg(b.dice) - diceAvg(a.dice))[0];
-      if (allSp && (groups.length >= 2 || B.boss)) { acts.set(c, { type: 'spell', spell: allSp.id }); return; }
+      // 全体攻撃でも大して削れない打たれ強い相手には、怯ませる・即死を優先する
+      const unitHpAvg = groups.reduce((t, g) => t + liveUnits(g).reduce((x, u) => x + u.hp, 0), 0) / Math.max(1, groups.reduce((t, g) => t + liveUnits(g).length, 0));
+      const allTooWeak = allSp && diceAvg(allSp.dice) < unitHpAvg * 0.4 && !B.boss;
+      if (allTooWeak && groups.length >= 2 && B.round <= 2 && usable(c, SPELL_BY_ID.osore) && groups.some(g => !(g.acMod > 0))) {
+        acts.set(c, { type: 'spell', spell: 'osore' }); for (const g of groups) groupSpellsCast.add(g); return;
+      }
+      if (allSp && (groups.length >= 2 || B.boss) && !allTooWeak) { acts.set(c, { type: 'spell', spell: allSp.id }); return; }
       // 呪文封じ（強い術者がいる場合）
       const casterG = groups.find(g => (g.mon.flags.mage || 0) + (g.mon.flags.priest || 0) >= 3 && !groupSpellsCast.has(g) && liveUnits(g).some(u => !u.silenced) && !g.mon.flags.boss);
       if (casterG) {
         const sil = canCast(c, SPELL_BY_ID.shizuka) ? 'shizuka' : canCast(c, SPELL_BY_ID.shizume) ? 'shizume' : null;
         if (sil && dg > spellBar * 1.2) { acts.set(c, { type: 'spell', spell: sil, target: casterG }); groupSpellsCast.add(casterG); return; }
       }
-      // 即死
+      // 即死（グループ）
       const deathG = groups.filter(g => g.mon.lv <= 8 && liveUnits(g).length >= 3 && !groupSpellsCast.has(g)).sort((a, b) => groupThreat(b) - groupThreat(a))[0];
-      if (deathG && canCast(c, SPELL_BY_ID.shinigami) && deathG.mon.lv >= 4) { acts.set(c, { type: 'spell', spell: 'shinigami', target: deathG }); groupSpellsCast.add(deathG); return; }
+      if (deathG && usable(c, SPELL_BY_ID.shinigami) && deathG.mon.lv >= 4) { acts.set(c, { type: 'spell', spell: 'shinigami', target: deathG }); groupSpellsCast.add(deathG); return; }
+      // 強い1体（残り2体以下の強敵）には、効く相手を選んで一撃で仕留める呪文
+      const tough = (g) => ['undead', 'demon', 'insect', 'golem'].includes(g.mon.type) || g.mon.flags.undead;
+      const bigOne = groups.filter(g => liveUnits(g).length <= 2 && !g.mon.flags.boss && g.mon.lv >= c.level * 0.6).sort((a, b) => groupThreat(b) - groupThreat(a))[0];
+      if (bigOne) {
+        if (bigOne.mon.flags.undead && usable(c, SPELL_BY_ID.joubutsu)) { acts.set(c, { type: 'spell', spell: 'joubutsu', target: bigOne }); return; }
+        if (bigOne.mon.type === 'demon' && usable(c, SPELL_BY_ID.akumabarai)) { acts.set(c, { type: 'spell', spell: 'akumabarai', target: bigOne }); return; }
+        if (!tough(bigOne) && usable(c, SPELL_BY_ID.inochitori)) { acts.set(c, { type: 'spell', spell: 'inochitori', target: bigOne }); return; }
+      }
+      // HPの多い強敵からは生命力を吸い取る（自分が傷ついているときや、効きにくい相手に）
+      if (bigOne && usable(c, SPELL_BY_ID.suitori)) {
+        const hpAvg = liveUnits(bigOne).reduce((t, u) => t + u.hp, 0) / liveUnits(bigOne).length;
+        if (hpAvg >= 50 && (c.hp < c.maxhp * 0.7 || tough(bigOne))) { acts.set(c, { type: 'spell', spell: 'suitori', target: bigOne }); return; }
+      }
+      // 即死（グループ・成功率低め）：ほかに有効な手がない強い群れに
+      const deathG2 = groups.filter(g => liveUnits(g).length >= 3 && !groupSpellsCast.has(g) && !g.mon.flags.boss).sort((a, b) => groupThreat(b) - groupThreat(a))[0];
+      if (deathG2 && usable(c, SPELL_BY_ID.shinotsukai) && deathG2.mon.lv >= 6) { acts.set(c, { type: 'spell', spell: 'shinotsukai', target: deathG2 }); groupSpellsCast.add(deathG2); return; }
+      // 打たれ強い群れ（呪文の一撃で倒しきれない）は、石化・麻痺で止める
+      const ctrlG = groups.filter(g => liveUnits(g).length >= 2 && !g.mon.flags.boss && !groupSpellsCast.has(g) && g.mon.lv >= 4).sort((a, b) => groupThreat(b) - groupThreat(a))[0];
+      if (ctrlG) {
+        const best = damageSpells(c, ['group']).sort((a, b) => diceAvg(b.dice) - diceAvg(a.dice))[0];
+        const avgHp = liveUnits(ctrlG).reduce((t, u) => t + u.hp, 0) / liveUnits(ctrlG).length;
+        const weakDamage = !best || diceAvg(best.dice) < avgHp * 0.8;
+        const ctrl = usable(c, SPELL_BY_ID.ishikure) ? 'ishikure' : usable(c, SPELL_BY_ID.shibire) && liveUnits(ctrlG).some(u => !u.paralyzed) ? 'shibire' : null;
+        if (ctrl && weakDamage) { acts.set(c, { type: 'spell', spell: ctrl, target: ctrlG }); groupSpellsCast.add(ctrlG); return; }
+      }
       // グループ攻撃
       const grpSp = damageSpells(c, ['group']).sort((a, b) => diceAvg(b.dice) - diceAvg(a.dice))[0];
       const multiG = groups.filter(g => liveUnits(g).length >= 2 && !groupSpellsCast.has(g)).sort((a, b) => groupThreat(b) - groupThreat(a))[0];
@@ -138,13 +173,26 @@ function chooseActionsInner(game, B) {
       // 眠り（低レベル時）
       const sleepG = groups.filter(g => !g.mon.flags.noSleep && liveUnits(g).length >= 2 && !groupSpellsCast.has(g) && liveUnits(g).some(u => !u.asleep)).sort((a, b) => groupThreat(b) - groupThreat(a))[0];
       if (sleepG && canCast(c, SPELL_BY_ID.nemuri) && !grpSp && dg > spellBar) { acts.set(c, { type: 'spell', spell: 'nemuri', target: sleepG }); groupSpellsCast.add(sleepG); return; }
+      // 敵を弱らせる（序盤に、前列が殴りやすくなるように）
+      if (B.round <= 2 && !inFront && dg >= spellBar * 1.2) {
+        const unweakened = groups.filter(g => !(g.acMod > 0) && !groupSpellsCast.has(g));
+        if (unweakened.length >= 2 && usable(c, SPELL_BY_ID.osore)) { acts.set(c, { type: 'spell', spell: 'osore' }); for (const g of unweakened) groupSpellsCast.add(g); return; }
+        const tgt = unweakened.sort((a, b) => groupThreat(b) - groupThreat(a))[0];
+        const deb = usable(c, SPELL_BY_ID.hirumi) ? 'hirumi' : usable(c, SPELL_BY_ID.yamikumo) ? 'yamikumo' : null;
+        if (tgt && deb) { acts.set(c, { type: 'spell', spell: deb, target: tgt }); groupSpellsCast.add(tgt); return; }
+      }
       // 単体攻撃（強敵に）
       const single = damageSpells(c, ['enemy', 'group']).sort((a, b) => diceAvg(b.dice) - diceAvg(a.dice))[0];
       if (single && (strongest.mon.lv >= c.level * 0.5 || B.boss) && (!inFront || dg > spellBar * 1.5)) { acts.set(c, { type: 'spell', spell: single.id, target: strongest }); return; }
       // 守りの呪文
       if (!buffed && B.round <= 2) {
-        const buff = canCast(c, SPELL_BY_ID.kasumi) ? 'kasumi' : canCast(c, SPELL_BY_ID.mamori) ? 'mamori' : null;
+        const buff = usable(c, SPELL_BY_ID.kasumi) ? 'kasumi' : usable(c, SPELL_BY_ID.mamori) ? 'mamori' : null;
         if (buff && !inFront) { acts.set(c, { type: 'spell', spell: buff }); buffed = true; return; }
+      }
+      // 前列でいちばん守りの薄い仲間を固める
+      if (B.round <= 2 && usable(c, SPELL_BY_ID.katame)) {
+        const weakFront = party.slice(0, 3).filter(t => canAct(t) && !(t._acBuff > 0)).sort((a, b) => b.hp / b.maxhp - a.hp / a.maxhp)[0];
+        if (weakFront && !inFront) { acts.set(c, { type: 'spell', spell: 'katame', target: weakFront }); return; }
       }
     }
     }
@@ -240,8 +288,9 @@ function campPlanInner(game, hurtBelow = 0.8) {
   }
   for (const t of party) {
     if (t.status === 'paralyzed' || (t.poison && isAlive(t))) {
-      const caster = party.find(c => canCast(c, SPELL_BY_ID.gedoku));
-      if (caster) return [caster, SPELL_BY_ID.gedoku, t];
+      const sp = t.status === 'paralyzed' ? SPELL_BY_ID.hogushi : SPELL_BY_ID.gedoku;
+      const caster = party.find(c => canCast(c, sp));
+      if (caster) return [caster, sp, t];
     }
   }
   // 回復：最も減っている味方

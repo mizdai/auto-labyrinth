@@ -106,6 +106,7 @@ export function* battle(game, groups, opts = {}) {
     for (const g of B.groups) for (const u of g.units) {
       if (u.hp <= 0) continue;
       if (u.asleep > 0) u.asleep--;
+      if (u.afraid > 0) u.afraid--;
       if (g.mon.flags.regen) u.hp = Math.min(u.max, u.hp + Math.max(1, Math.floor(g.mon.lv / 2)));
     }
     // 死亡・灰・石化・麻痺の仲間はターンの終わりに最後尾へ下げ、動ける仲間を前へ詰める
@@ -161,11 +162,11 @@ function* partyAction(game, B, c, act) {
       const w = c.equip.weapon ? ITEMS[c.equip.weapon.id] : null;
       for (let i = 0; i < n && tgt.hp > 0; i++) {
         const roll = R.d(20);
-        const need = 15 - hitBonus(c) - g.mon.ac - (tgt.asleep ? 5 : 0);
+        const need = 15 - hitBonus(c) - g.mon.ac - (g.acMod || 0) - (tgt.asleep || tgt.paralyzed ? 5 : 0);
         if (roll === 20 || (roll !== 1 && roll >= need)) {
           hits++;
           let d = Math.max(1, R.roll(weaponDice(c)) + strBonus(c));
-          if (tgt.asleep) d *= 2;
+          if (tgt.asleep || tgt.paralyzed) d *= 2;
           if (w && w.slay && (w.slay === g.mon.type || (w.slay === 'undead' && g.mon.flags.undead) || (w.slay === 'caster' && (g.mon.flags.mage || g.mon.flags.priest)))) d *= 2;
           dmg += d; tgt.hp -= d;
           // 忍者・名刀の急所攻撃
@@ -226,6 +227,9 @@ function* castSpell(game, B, c, sp, target) {
       else if (sp.target === 'group') { const g = B.groups.includes(target) && liveUnits(target).length ? target : liveGroups(B)[0]; if (g) targets = liveUnits(g).map(u => [g, u]); }
       else if (sp.target === 'all') { for (const g of liveGroups(B)) for (const u of liveUnits(g)) targets.push([g, u]); }
       let kills = 0, total = 0, resisted = 0;
+      if (sp.only === 'undead' && targets.length && !targets[0][0].mon.flags.undead) {
+        game.log(`${targets[0][0].mon.name}には効かない。`); yield 1; return;
+      }
       for (const [g, u] of targets) {
         if (g.mon.flags.resist && R.chance(g.mon.flags.resist)) { resisted++; continue; }
         const d = R.roll(sp.dice);
@@ -278,6 +282,62 @@ function* castSpell(game, B, c, sp, target) {
     }
     case 'ac': {
       if (sp.target === 'party') { B.partyAC += sp.amount; game.log(`一行の守りが固くなった（AC-${sp.amount}）。`); }
+      else if (target && isAlive(target)) { target._acBuff = (target._acBuff || 0) + sp.amount; game.log(`${target.name}の守りが固くなった（AC-${sp.amount}）。`); }
+      yield 1; return;
+    }
+    case 'debuff':
+    case 'fear': {
+      const gs = sp.target === 'all' ? liveGroups(B) : [B.groups.includes(target) && liveUnits(target).length ? target : liveGroups(B)[0]].filter(Boolean);
+      for (const g of gs) {
+        g.acMod = (g.acMod || 0) + sp.amount;
+        if (sp.effect === 'fear') for (const u of liveUnits(g)) if (!g.mon.flags.boss && !(g.mon.flags.resist && R.chance(g.mon.flags.resist)) && R.chance(0.6)) u.afraid = R.range(2, 3);
+      }
+      const who = sp.target === 'all' ? '魔物たち' : (gs[0] ? gs[0].mon.name : '魔物');
+      game.log(sp.effect === 'fear' ? `${who}は怯えている（AC+${sp.amount}）。` : `${who}は闇に包まれた（AC+${sp.amount}）。`);
+      yield 1; return;
+    }
+    case 'stone':
+    case 'paralyze': {
+      const g = B.groups.includes(target) && liveUnits(target).length ? target : liveGroups(B)[0];
+      if (!g) return;
+      let n = 0;
+      for (const u of liveUnits(g)) {
+        if (g.mon.flags.boss || (g.mon.flags.resist && R.chance(g.mon.flags.resist))) continue;
+        const p = (sp.effect === 'stone' ? 0.7 : 0.65) - g.mon.lv * 0.03;
+        if (!R.chance(p)) continue;
+        n++;
+        if (sp.effect === 'stone') onKillQuiet(B, g, u, c); else u.paralyzed = true;
+      }
+      game.log(n ? `${g.mon.name}${n}体が${sp.effect === 'stone' ? '石になった' : '麻痺した'}。` : `${g.mon.name}には効かなかった。`);
+      yield 1; return;
+    }
+    case 'deathOne':
+    case 'deathGroup':
+    case 'banish': {
+      const g = B.groups.includes(target) && liveUnits(target).length ? target : liveGroups(B)[0];
+      if (!g) return;
+      if (sp.effect === 'banish' && g.mon.type !== 'demon') { game.log(`${g.mon.name}には効かない。`); yield 1; return; }
+      const tough = ['undead', 'demon', 'insect', 'golem'].includes(g.mon.type) || g.mon.flags.undead;
+      const units = sp.effect === 'deathGroup' ? liveUnits(g) : [R.pick(liveUnits(g))];
+      let n = 0;
+      for (const u of units) {
+        if (g.mon.flags.boss || (g.mon.flags.resist && R.chance(g.mon.flags.resist))) continue;
+        const p = sp.effect === 'banish' ? 0.9 : sp.effect === 'deathOne' ? (tough ? 0.3 : 0.9) : (tough ? 0.15 : 0.4);
+        if (R.chance(p)) { n++; onKillQuiet(B, g, u, c); }
+      }
+      game.log(n ? `${g.mon.name}${n > 1 ? n + '体' : ''}の命を奪った。` : `${g.mon.name}には効かなかった。`);
+      yield 1; return;
+    }
+    case 'drain': {
+      const g = B.groups.includes(target) && liveUnits(target).length ? target : liveGroups(B)[0];
+      if (!g) return;
+      const u = R.pick(liveUnits(g));
+      if (g.mon.flags.boss || (g.mon.flags.resist && R.chance(g.mon.flags.resist))) { game.log(`${g.mon.name}には効かなかった。`); yield 1; return; }
+      const left = Math.min(u.hp, R.d(8));
+      const taken = u.hp - left;
+      u.hp = left;
+      c.hp = Math.min(c.maxhp, c.hp + taken);
+      game.log(`${g.mon.name}の生命力を${taken}吸い取った。`);
       yield 1; return;
     }
     case 'heal': {
@@ -297,7 +357,12 @@ function* castSpell(game, B, c, sp, target) {
     }
     case 'cure': {
       const t = target;
-      if (t) { t.poison = false; if (t.status === 'paralyzed') t.status = 'ok'; game.log(`${t.name}の体が楽になった。`); }
+      if (t) {
+        const cures = sp.cures || ['poison', 'paralyzed'];
+        if (cures.includes('poison')) t.poison = false;
+        if (cures.includes('paralyzed') && t.status === 'paralyzed') t.status = 'ok';
+        game.log(`${t.name}の体が楽になった。`);
+      }
       yield 1; return;
     }
   }
@@ -334,7 +399,8 @@ const MON_PRIEST = [
 function* monsterAction(game, B, g, u) {
   const m = g.mon;
   const party = game.party;
-  if (u.asleep > 0) return;
+  if (u.asleep > 0 || u.paralyzed) return;
+  if (u.afraid > 0 && R.chance(0.6)) { game.log(`${m.name}は怯えて動けない。`); yield 1; return; }
   const idx = B.groups.indexOf(g);
   // 逃走
   if (m.flags.flee && u.hp < u.max / 2 && R.chance(0.3)) { u.hp = 0; game.log(`${m.name}は逃げ出した。`); yield 1; return; }
@@ -380,7 +446,7 @@ function* monsterAction(game, B, g, u) {
   let hits = 0, dmg = 0;
   for (const a of m.atk) {
     const roll = R.d(20);
-    const need = 19 - m.lv - charAC(t, B.partyAC) + (t.status === 'asleep' ? -5 : 0);
+    const need = 19 - m.lv - charAC(t, B.partyAC + (t._acBuff || 0)) + (t.status === 'asleep' ? -5 : 0);
     if (roll === 20 || (roll !== 1 && roll >= need)) { hits++; dmg += R.roll(a); }
   }
   if (!hits) { game.log(`${m.name}の攻撃。${t.name}はかわした。`); yield 1; return; }
