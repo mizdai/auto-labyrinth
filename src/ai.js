@@ -34,10 +34,34 @@ export function danger(game, B) {
 }
 
 const HEALS = ['iyashi', 'naoshi', 'ooiyashi', 'kaifuku'].map(id => SPELL_BY_ID[id]);
+// ---- 帰還の呪文（キカン・テンイ）の温存 ----
+// どちらもレベル6で、同じレベル6の呪文（カイフク・ゴウカ）と回数を共有している。
+// 迷宮の中では、パーティ全体で帰還の呪文を最低1回分残す。非常時と城下町では温存しない。
+let reserveCtx = null;   // { game, emergency }
+function returnSlots(game) {
+  let n = 0;
+  for (const m of game.party) {
+    if (!canAct(m)) continue;
+    const ms = maxSlots(m);
+    if (ms.priest[5] > 0) n += m.mp.priest[5];   // キカン
+    if (ms.mage[5] > 0) n += m.mp.mage[5];       // テンイ
+  }
+  return n;
+}
+function reserveOK(c, sp) {
+  const ctx = reserveCtx;
+  if (!ctx || ctx.emergency || ctx.game.location !== 'dungeon') return true;
+  if (sp.lv !== 6 || sp.effect === 'return') return true;
+  const total = returnSlots(ctx.game);
+  if (total === 0) return true;                  // そもそも唱えられる人がいない
+  return total - 1 >= 1;                         // 唱えたあとも1回分残るなら使ってよい
+}
+const usable = (c, sp) => canCast(c, sp) && reserveOK(c, sp);
+
 export function bestHeal(c, need) {
   let best = null;
   for (const sp of HEALS) {
-    if (!canCast(c, sp)) continue;
+    if (!usable(c, sp)) continue;
     const amount = sp.effect === 'fullheal' ? 999 : diceAvg(sp.dice);
     if (!best) { best = sp; continue; }
     const bestAmt = best.effect === 'fullheal' ? 999 : diceAvg(best.dice);
@@ -48,11 +72,11 @@ export function bestHeal(c, need) {
 }
 
 function damageSpells(c, kinds) {
-  return SPELLS.filter(s => s.effect === 'damage' && kinds.includes(s.target) && canCast(c, s));
+  return SPELLS.filter(s => s.effect === 'damage' && kinds.includes(s.target) && usable(c, s));
 }
 
 // 戦闘中の行動選択
-export function chooseActions(game, B) {
+function chooseActionsInner(game, B) {
   const party = game.party;
   const P = policy(game);
   const useMult = B.noRun ? SPELL_USE.full.mult : (SPELL_USE[game.settings.spellUse] || SPELL_USE.normal).mult;
@@ -205,7 +229,7 @@ import { expNext as nextExp, expFor } from './character.js';
 
 // 野営での回復計画：[caster, spell, target] を返す
 // hurtBelow: この割合未満のHPの仲間を回復対象にする
-export function campPlan(game, hurtBelow = 0.8) {
+function campPlanInner(game, hurtBelow = 0.8) {
   const party = game.party;
   // 蘇生
   for (const t of party) {
@@ -234,4 +258,40 @@ export function campPlan(game, hurtBelow = 0.8) {
     if (best) return best;
   }
   return null;
+}
+
+// 戦闘の行動選択（帰還の呪文の温存つき）。全滅しそうなとき・ボス戦では温存しない
+export function chooseActions(game, B) {
+  const party = game.party;
+  const alive = party.filter(isAlive);
+  const avgHp = alive.reduce((t, c) => t + c.hp / c.maxhp, 0) / Math.max(1, alive.length);
+  const emergency = B.boss || party.filter(canAct).length <= 2 || avgHp < 0.3 || danger(game, B) > policy(game).runDanger;
+  reserveCtx = { game, emergency };
+  try {
+    const acts = chooseActionsInner(game, B);
+    if (!emergency && game.location === 'dungeon') {
+      // 同じターンに何人もレベル6の呪文を選んで、温存分まで使ってしまわないように
+      const total = returnSlots(game);
+      let allowance = total > 0 ? total - 1 : Infinity;
+      for (const [c, a] of acts) {
+        if (a.type !== 'spell') continue;
+        const sp = SPELL_BY_ID[a.spell];
+        if (sp.lv !== 6 || sp.effect === 'return') continue;
+        const ms = maxSlots(c);
+        const sharesReturn = (sp.school === 'priest' && ms.priest[5] > 0) || (sp.school === 'mage' && ms.mage[5] > 0);
+        if (!sharesReturn) continue;
+        if (allowance > 0) { allowance--; continue; }
+        acts.set(c, party.indexOf(c) < 3 ? { type: 'fight', group: B.groups.find(g => liveUnits(g).length) } : { type: 'parry' });
+      }
+    }
+    return acts;
+  } finally { reserveCtx = null; }
+}
+
+// 野営・宿屋での回復計画（帰還の呪文の温存つき）。パーティが瀕死のときは温存しない
+export function campPlan(game, hurtBelow = 0.8) {
+  const alive = game.party.filter(isAlive);
+  const avgHp = alive.reduce((t, c) => t + c.hp / c.maxhp, 0) / Math.max(1, alive.length);
+  reserveCtx = { game, emergency: avgHp < 0.3 };
+  try { return campPlanInner(game, hurtBelow); } finally { reserveCtx = null; }
 }
