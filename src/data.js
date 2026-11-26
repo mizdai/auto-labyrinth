@@ -68,6 +68,7 @@ export const SPELLS = [
   { id: 'hogushi',  name: 'ホグシ',   school: 'priest', lv: 3, target: 'ally', effect: 'cure', cures: ['paralyzed'], combat: true, camp: true, desc: '麻痺を治す' },
   { id: 'ooiyashi', name: 'オオイヤシ', school: 'priest', lv: 4, target: 'ally', effect: 'heal', dice: [4, 8, 4], combat: true, camp: true, desc: '味方1人のHPを大きく回復' },
   { id: 'seijin',   name: 'セイジン', school: 'priest', lv: 4, target: 'group', effect: 'damage', dice: [4, 4, 0], combat: true, desc: '敵1グループに聖なる刃' },
+  { id: 'matoi',    name: 'マトイ',   school: 'priest', lv: 4, target: 'none', effect: 'acLong', amount: 2, camp: true, desc: '迷宮にいるあいだ、味方全体のACを2下げる' },
   { id: 'harai',    name: 'ハライ',   school: 'priest', lv: 4, target: 'group', effect: 'dispel', combat: true, desc: '不死の敵1グループを祓う' },
   { id: 'yomigaeri',name: 'ヨミガエリ', school: 'priest', lv: 5, target: 'ally', effect: 'revive', combat: false, camp: true, desc: '死者を蘇らせる（失敗すると灰になる）' },
   { id: 'yaburi',   name: 'ヤブリ',   school: 'priest', lv: 5, target: 'all', effect: 'unresist', combat: true, desc: '敵全体の呪文への抵抗を下げる（重ねがけ可）' },

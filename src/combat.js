@@ -52,7 +52,7 @@ function groupLabel(g) { const n = liveUnits(g).length; return n > 1 ? `${g.mon.
 // 戦闘本体。result: 'win' | 'fled' | 'wipe' を B.result に入れる
 export function* battle(game, groups, opts = {}) {
   const party = game.party;
-  const B = { groups, round: 0, partyAC: 0, result: null, exp: 0, gold: 0, boss: !!opts.boss, lair: !!opts.lair, noRun: !!opts.noRun || !!opts.boss, ward: game.dungeonWard || 0 };
+  const B = { groups, round: 0, partyAC: game.dungeonAC || 0, baseAC: game.dungeonAC || 0, result: null, exp: 0, gold: 0, boss: !!opts.boss, lair: !!opts.lair, noRun: !!opts.noRun || !!opts.boss, ward: game.dungeonWard || 0 };
   game.battle = B;
   for (const c of party) { c._silenced = false; c._acBuff = 0; }
   game.log(groups.map(groupLabel).join('、') + ' が現れた！', 'enc');

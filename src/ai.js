@@ -96,7 +96,7 @@ function chooseActionsInner(game, B) {
   const healTargets = new Set();
   const spellBar = P.spellThreshold * useMult;
   const strongest = [...groups].sort((a, b) => groupThreat(b) - groupThreat(a))[0];
-  let buffed = B.partyAC > 0;
+  let buffed = B.partyAC > (B.baseAC || 0);
   let groupSpellsCast = new Set();
 
   party.forEach((c, idx) => {

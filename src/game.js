@@ -79,7 +79,7 @@ export class Game {
     return JSON.stringify({
       v: 1, mapVersion: MAP_VERSION, shortcuts: this.shortcuts, elevators: this.elevators, seed: this.seed, party: this.party, reserve: this.reserve, gold: this.gold, bag: this.bag, stock: this.stock,
       location: this.location, floor: this.floor, x: this.x, y: this.y, dir: this.dir, known, lairsCleared: this.lairsCleared, lairsFled: this.lairsFled,
-      deepest: this.deepest, mode: this.mode, cleared: this.cleared, settings: this.settings, stats: this.stats,
+      deepest: this.deepest, dungeonWard: this.dungeonWard || 0, dungeonAC: this.dungeonAC || 0, mode: this.mode, cleared: this.cleared, settings: this.settings, stats: this.stats,
       logs: this.logs.slice(-60), nextId: getNextId(), rng: R.s,
     });
   }
@@ -89,7 +89,7 @@ export class Game {
     Object.assign(g, {
       seed: d.seed, party: d.party, reserve: d.reserve || [], gold: d.gold, bag: d.bag, stock: d.stock || {},
       location: d.location, floor: d.floor, x: d.x, y: d.y, dir: d.dir, lairsCleared: d.lairsCleared || [], lairsFled: d.lairsFled || [],
-      deepest: d.deepest || 1, mode: d.mode || 'explore', cleared: !!d.cleared,
+      deepest: d.deepest || 1, dungeonWard: d.dungeonWard || 0, dungeonAC: d.dungeonAC || 0, mode: d.mode || 'explore', cleared: !!d.cleared,
       settings: { ...DEFAULT_SETTINGS, ...d.settings }, stats: { ...g.stats, ...d.stats }, logs: d.logs || [],
     });
     if (d.mapVersion === MAP_VERSION) {
@@ -119,7 +119,8 @@ export class Game {
   // ================= 城下町 =================
   *town() {
     this.townState = '城下町';
-    this.dungeonWard = 0;   // 迷宮にいるあいだ続く障壁は、地上に戻ると消える
+    this.dungeonWard = 0;   // 迷宮にいるあいだ続く障壁・守りは、地上に戻ると消える
+    this.dungeonAC = 0;
     this.battle = null;
     this.log('―― 城下町 ――', 'sys');
     for (const c of this.party) c.poison = false;
@@ -421,6 +422,12 @@ export class Game {
       if (!this.dungeonWard && this.floor >= 4 && this.mode !== 'return') {
         const caster = this.party.find(c => canCast(c, SPELL_BY_ID.kago) && c.mp.mage[6] >= 2);
         if (caster) { this.applyCampSpell(caster, SPELL_BY_ID.kago, null); yield 1; }
+      }
+
+      // 迷宮にいるあいだ続く守り：地下2階以上で、僧侶Lv4の回数に余裕があれば唱える
+      if (!this.dungeonAC && this.floor >= 2 && this.mode !== 'return') {
+        const caster = this.party.find(c => canCast(c, SPELL_BY_ID.matoi) && c.mp.priest[3] >= 3);
+        if (caster) { this.applyCampSpell(caster, SPELL_BY_ID.matoi, null); yield 1; }
       }
 
       // 撤退判断
@@ -794,6 +801,10 @@ export class Game {
   applyCampSpell(caster, sp, t, quiet = false) {
     caster.mp[sp.school][sp.lv - 1]--;
     let msg = `${caster.name}は${sp.name}を唱えた。`;
+    if (sp.effect === 'acLong') {
+      this.dungeonAC = sp.amount;
+      msg += `一行の守りが固くなった（迷宮にいるあいだAC-${sp.amount}）。`;
+    }
     if (sp.effect === 'wardLong') {
       this.dungeonWard = Math.min(0.5, 0.3 + caster.level * 0.01);
       msg += `一行は加護に包まれた（呪文・ブレスを${Math.round(this.dungeonWard * 100)}%軽減）。`;

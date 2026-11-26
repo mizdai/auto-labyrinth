@@ -145,7 +145,7 @@ function render() {
     const st = c.status !== 'ok' ? STATUS_NAMES[c.status] : (c.poison ? '毒' : '');
     const cls = !isAlive(c) ? 'dead' : (st ? 'bad' : '');
     const pct = c.maxhp ? Math.max(0, c.hp / c.maxhp) : 0;
-    html += `<tr class="${cls}" data-i="${i}"><td>${i < 3 ? '' : '　'}${c.name}</td><td>${CLASSES[c.cls].ab}-${ALIGN_NAMES[c.align][0]}</td><td>${c.level}</td><td>${charAC(c, game.battle ? game.battle.partyAC : 0)}</td>`
+    html += `<tr class="${cls}" data-i="${i}"><td>${i < 3 ? '' : '　'}${c.name}</td><td>${CLASSES[c.cls].ab}-${ALIGN_NAMES[c.align][0]}</td><td>${c.level}</td><td>${charAC(c, game.battle ? game.battle.partyAC : (game.location === 'dungeon' ? game.dungeonAC || 0 : 0))}</td>`
       + `<td class="hp">${c.hp}/${c.maxhp}<span class="bar"><i style="width:${(pct * 100) | 0}%;background:${pct < 0.3 ? '#d55' : pct < 0.6 ? '#dc5' : '#6c6'}"></i></span></td><td>${st}</td></tr>`;
   });
   if (html !== lastPartyHtml) { $('#party tbody').innerHTML = html; lastPartyHtml = html; }
