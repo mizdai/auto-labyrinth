@@ -1,13 +1,13 @@
 // 転職の回数と時期を数える
-// 使い方: node tools/classchange.mjs <開始seed> <seed数> <最大手数>
+// 使い方: node tools/classchange.mjs <開始seed> <seed数> <最大手数> [パーティ構成 good/evil/warrior/magic]
 import { Game } from '../src/game.js';
 import { R } from '../src/rng.js';
 import { partyLevel } from '../src/ai.js';
 
-const s0 = +(process.argv[2] || 7), n = +(process.argv[3] || 6), maxTicks = +(process.argv[4] || 400000);
+const s0 = +(process.argv[2] || 7), n = +(process.argv[3] || 6), maxTicks = +(process.argv[4] || 400000), composition = process.argv[5] || 'good';
 for (let seed = s0; seed < s0 + n; seed++) {
   R.s = seed;
-  const g = Game.newGame({});
+  const g = Game.newGame({ composition });
   g.seed = seed * 31 + 7;
   const ev = [];
   let t = 0;

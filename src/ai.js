@@ -372,12 +372,14 @@ export function campPlan(game, hurtBelow = 0.8) {
 
 // ================= 転職 =================
 // 転職するのは、次の条件をすべて満たすときだけ（1回の帰還で1人まで）
-// (a) 得をする転職：戦士→君主・侍、盗賊→忍者、全部の呪文を覚えた魔術師→僧侶、僧侶→魔術師。一度就いた職業には戻らない
-// (b) 今の職業で育ち切ってから：戦士・盗賊はLv10以上、魔術師・僧侶はその系統の呪文を全部覚えてから
+// (a) 得をする転職：まだ覚えていない系統の呪文を覚えられる、呪文を持ったまま前衛職（侍・君主・忍者）になれる、
+//     盗賊から忍者になる、鑑定できる仲間がいなければ司教になる。前衛から後衛へは移らず、一度就いた職業には戻らない
+// (b) 今の職業で育ち切ってから：呪文を使う職業はその系統の呪文を全部覚えてから、それ以外はLv10以上
 // (c') 立て直し中でない：一行に戻したい仲間が寺院に安置されたままでない、全員が健康、お金が平均Lv×300G以上
 // (d) 転職したばかりの仲間（Lv10未満）がいない
-// (e) 前列向きの仲間が減らない（3人いれば3人を保つ）、回復役1人と罠を外せる仲間1人が転職後も残る
+// (e) 前列向きの仲間が減らない（3人いれば3人を保つ）、回復役1人が残り、罠を外せる仲間がいれば残る
 const SICK = ['dead', 'ash', 'stoned', 'paralyzed'];
+const FRONT_CLASSES = ['fighter', 'samurai', 'lord', 'ninja'];
 export function classChangePlan(game) {
   const P = game.party;
   if (P.length < 6 || P.some(c => c.status !== 'ok')) return null;
@@ -387,25 +389,38 @@ export function classChangePlan(game) {
   if (game.gold < avg * 300) return null;
   if (P.some(c => c.history && c.history.length && c.level < 10)) return null;
   const cands = [];
+  const hasBishop = P.some(x => x.cls === 'bishop');
   for (const c of P) {
+    if (c.cls === 'ninja') continue;
     const held = new Set([c.cls, ...(c.history || [])]);
     const ok = (k) => !held.has(k) && meetsReq(c.stats, k) && CLASSES[k].align.includes(c.align);
     const allOf = (school) => SPELLS.filter(s => s.school === school).every(s => knowsSpell(c, s));
-    let to = null;
-    if (c.cls === 'fighter' && c.level >= 10) to = ['lord', 'samurai'].find(ok);
-    else if (c.cls === 'thief' && c.level >= 10 && ok('ninja')) to = 'ninja';
-    else if (c.cls === 'mage' && allOf('mage') && ok('priest')) to = 'priest';
-    else if (c.cls === 'priest' && allOf('priest') && ok('mage')) to = 'mage';
-    if (to) cands.push({ c, cls: to });
+    // (b) 育ち切ったか：呪文を使う職業はその系統の呪文を全部覚えてから、それ以外はLv10以上
+    const schools = Object.keys(CLASSES[c.cls].spells);
+    if (schools.length ? !schools.every(allOf) : c.level < 10) continue;
+    const isFront = roleOf(c) === 'front';
+    for (const to of ['lord', 'samurai', 'ninja', 'priest', 'mage', 'bishop']) {
+      if (!ok(to)) continue;
+      const toFront = FRONT_CLASSES.includes(to);
+      if (isFront && !toFront) continue;                    // 前衛から後衛には移らない
+      if (c.cls === 'thief' && to !== 'ninja') continue;    // 盗賊は罠を外せる忍者にだけ
+      let v = 0;
+      for (const sc of Object.keys(CLASSES[to].spells)) if (!allOf(sc)) v += 3;  // まだ覚えていない系統の呪文を覚えられる
+      if (toFront && !isFront) v += 2;                      // 呪文を持ったまま前衛になれる
+      if (to === 'ninja' && c.cls === 'thief') v += 3;      // 盗賊から忍者へ
+      if (to === 'bishop' && !hasBishop) v += 2;            // 鑑定できる仲間がいない
+      if (v >= 2) cands.push({ c, cls: to, v });
+    }
   }
-  cands.sort((a, b) => b.c.level - a.c.level);
+  cands.sort((a, b) => b.v - a.v || b.c.level - a.c.level);
   for (const { c, cls } of cands) {
     const after = (x) => (x === c ? { ...x, cls } : x);
     const front = P.filter(x => roleOf(after(x)) === 'front').length;
     const healer = P.some(x => x === c ? (CLASSES[cls].spells.priest || maxSlots(c).priest.some(v => v > 0)) : maxSlots(x).priest.some(v => v > 0));
     const trap = P.some(x => ['thief', 'ninja'].includes(after(x).cls));
     const frontBefore = P.filter(x => roleOf(x) === 'front').length;
-    if (front >= Math.min(3, frontBefore) && healer && trap) return { c, cls };
+    const trapBefore = P.some(x => ['thief', 'ninja'].includes(x.cls));
+    if (front >= Math.min(3, frontBefore) && healer && (trap || !trapBefore)) return { c, cls };
   }
   return null;
 }
