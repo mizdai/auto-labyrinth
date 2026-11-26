@@ -119,6 +119,7 @@ export class Game {
   // ================= 城下町 =================
   *town() {
     this.townState = '城下町';
+    this.dungeonWard = 0;   // 迷宮にいるあいだ続く障壁は、地上に戻ると消える
     this.battle = null;
     this.log('―― 城下町 ――', 'sys');
     for (const c of this.party) c.poison = false;
@@ -414,6 +415,12 @@ export class Game {
         const did = yield* this.camp(usualCamp ? 0.8 : 0.5);
         sinceCamp = 0;
         if (did) continue;
+      }
+
+      // 迷宮にいるあいだ続く障壁：地下4階以上で、魔術Lv7の回数に余裕があれば張る
+      if (!this.dungeonWard && this.floor >= 4 && this.mode !== 'return') {
+        const caster = this.party.find(c => canCast(c, SPELL_BY_ID.kago) && c.mp.mage[6] >= 2);
+        if (caster) { this.applyCampSpell(caster, SPELL_BY_ID.kago, null); yield 1; }
       }
 
       // 撤退判断
@@ -787,6 +794,10 @@ export class Game {
   applyCampSpell(caster, sp, t, quiet = false) {
     caster.mp[sp.school][sp.lv - 1]--;
     let msg = `${caster.name}は${sp.name}を唱えた。`;
+    if (sp.effect === 'wardLong') {
+      this.dungeonWard = Math.min(0.5, 0.3 + caster.level * 0.01);
+      msg += `一行は加護に包まれた（呪文・ブレスを${Math.round(this.dungeonWard * 100)}%軽減）。`;
+    }
     if (sp.effect === 'heal') { const h = R.roll(sp.dice); if (sp.target === 'party') { for (const p of this.party) if (isAlive(p)) p.hp = Math.min(p.maxhp, p.hp + R.roll(sp.dice)); msg += '一行の傷が癒えた。'; } else { t.hp = Math.min(t.maxhp, t.hp + h); msg += `${t.name}のHPが${h}回復。`; } }
     else if (sp.effect === 'fullheal') { t.hp = t.maxhp; t.poison = false; if (t.status === 'paralyzed') t.status = 'ok'; msg += `${t.name}は完全に回復した。`; }
     else if (sp.effect === 'cure') { t.poison = false; if (t.status === 'paralyzed') t.status = 'ok'; msg += `${t.name}の体が楽になった。`; }

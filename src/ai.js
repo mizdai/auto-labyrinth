@@ -139,12 +139,20 @@ function chooseActionsInner(game, B) {
       // 全体攻撃でも大して削れない打たれ強い相手には、怯ませる・即死を優先する
       const unitHpAvg = groups.reduce((t, g) => t + liveUnits(g).reduce((x, u) => x + u.hp, 0), 0) / Math.max(1, groups.reduce((t, g) => t + liveUnits(g).length, 0));
       const allTooWeak = allSp && diceAvg(allSp.dice) < unitHpAvg * 0.4 && !B.boss;
+      const unitCount = groups.reduce((t, g) => t + liveUnits(g).length, 0);
+      if (!B.boss && unitCount >= 5 && (allTooWeak || unitCount >= 7) && usable(c, SPELL_BY_ID.shinokaze)) {
+        acts.set(c, { type: 'spell', spell: 'shinokaze' }); return;
+      }
       if (allTooWeak && groups.length >= 2 && B.round <= 2 && usable(c, SPELL_BY_ID.osore) && groups.some(g => !(g.acMod > 0))) {
         acts.set(c, { type: 'spell', spell: 'osore' }); for (const g of groups) groupSpellsCast.add(g); return;
       }
       if (allSp && (groups.length >= 2 || B.boss) && !allTooWeak) { acts.set(c, { type: 'spell', spell: allSp.id }); return; }
       // 呪文封じ（強い術者がいる場合）
-      const casterG = groups.find(g => (g.mon.flags.mage || 0) + (g.mon.flags.priest || 0) >= 3 && !groupSpellsCast.has(g) && liveUnits(g).some(u => !u.silenced) && !g.mon.flags.boss);
+      const casterGs = groups.filter(g => (g.mon.flags.mage || 0) + (g.mon.flags.priest || 0) >= 3 && !groupSpellsCast.has(g) && liveUnits(g).some(u => !u.silenced) && !g.mon.flags.boss);
+      if (casterGs.length >= 2 && dg > spellBar && usable(c, SPELL_BY_ID.shizumari)) {
+        acts.set(c, { type: 'spell', spell: 'shizumari' }); for (const g of casterGs) groupSpellsCast.add(g); return;
+      }
+      const casterG = casterGs[0];
       if (casterG) {
         const sil = canCast(c, SPELL_BY_ID.shizuka) ? 'shizuka' : canCast(c, SPELL_BY_ID.shizume) ? 'shizume' : null;
         if (sil && dg > spellBar * 1.2) { acts.set(c, { type: 'spell', spell: sil, target: casterG }); groupSpellsCast.add(casterG); return; }
@@ -192,6 +200,11 @@ function chooseActionsInner(game, B) {
         const deb = usable(c, SPELL_BY_ID.hirumi) ? 'hirumi' : usable(c, SPELL_BY_ID.yamikumo) ? 'yamikumo' : null;
         if (tgt && deb) { acts.set(c, { type: 'spell', spell: deb, target: tgt }); groupSpellsCast.add(tgt); return; }
       }
+      // 眠りが効く強敵1体には、深い眠り
+      const sleeper = groups.find(g => liveUnits(g).length === 1 && !g.mon.flags.noSleep && !g.mon.flags.boss && !liveUnits(g)[0].asleep && g.mon.lv >= c.level * 0.8 && !groupSpellsCast.has(g));
+      if (sleeper && usable(c, SPELL_BY_ID.utatane)) { acts.set(c, { type: 'spell', spell: 'utatane', target: sleeper }); groupSpellsCast.add(sleeper); return; }
+      // 前列に出た呪文使いは、序盤に自分の守りを固める
+      if (inFront && B.round <= 2 && !(c._acBuff > 0) && usable(c, SPELL_BY_ID.kagemi)) { acts.set(c, { type: 'spell', spell: 'kagemi' }); return; }
       // 単体攻撃（強敵に）
       const single = damageSpells(c, ['enemy', 'group']).sort((a, b) => diceAvg(b.dice) - diceAvg(a.dice))[0];
       if (single && (strongest.mon.lv >= c.level * 0.5 || B.boss) && (!inFront || dg > spellBar * 1.5)) { acts.set(c, { type: 'spell', spell: single.id, target: strongest }); return; }

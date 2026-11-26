@@ -32,6 +32,8 @@ export const CLASSES = {
 export const SPELLS = [
   // 魔術師系
   { id: 'hibana',   name: 'ヒバナ',   school: 'mage', lv: 1, target: 'enemy', effect: 'damage', dice: [1, 8, 0], combat: true, desc: '敵1体に火の粉を浴びせる' },
+  { id: 'kagemi',   name: 'カゲミ',   school: 'mage', lv: 1, target: 'self', effect: 'ac', amount: 3, combat: true, desc: '唱えた人のACを3下げる' },
+  { id: 'utatane',  name: 'ウタタネ', school: 'mage', lv: 1, target: 'enemy', effect: 'sleep', combat: true, desc: '敵1体を深い眠りに誘う' },
   { id: 'nemuri',   name: 'ネムリ',   school: 'mage', lv: 1, target: 'group', effect: 'sleep', combat: true, desc: '敵1グループを眠らせる' },
   { id: 'yamikumo', name: 'ヤミクモ', school: 'mage', lv: 2, target: 'group', effect: 'debuff', amount: 3, combat: true, desc: '敵1グループを闇で包み、ACを3上げる' },
   { id: 'tsurara',  name: 'ツララ',   school: 'mage', lv: 2, target: 'enemy', effect: 'damage', dice: [3, 6, 0], combat: true, desc: '敵1体に氷の刃' },
@@ -44,11 +46,15 @@ export const SPELLS = [
   { id: 'tsuranuki', name: 'ツラヌキ', school: 'mage', lv: 4, target: 'enemy', effect: 'damage', dice: [20, 3, 0], combat: true, desc: '敵1体を魔力の槍で貫く' },
   { id: 'ishikure', name: 'イシクレ', school: 'mage', lv: 4, target: 'group', effect: 'stone', combat: true, desc: '敵1グループを石に変える' },
   { id: 'raimei',   name: 'ライメイ', school: 'mage', lv: 5, target: 'group', effect: 'damage', dice: [8, 6, 0], combat: true, desc: '敵1グループに雷を落とす' },
+  { id: 'ugachi',   name: 'ウガチ',   school: 'mage', lv: 5, target: 'enemy', effect: 'damage', dice: [10, 10, 0], combat: true, desc: '敵1体を魔力の奔流で穿つ' },
+  { id: 'shizumari', name: 'シズマリ', school: 'mage', lv: 5, target: 'all', effect: 'silence', combat: true, desc: '敵全体の呪文を封じる' },
   { id: 'shinigami',name: 'シニガミ', school: 'mage', lv: 5, target: 'group', effect: 'death', maxLv: 8, combat: true, desc: 'Lv8以下の敵1グループを即死させる' },
   { id: 'gouka',    name: 'ゴウカ',   school: 'mage', lv: 6, target: 'all', effect: 'damage', dice: [6, 6, 0], combat: true, desc: '敵全体を劫火で焼く' },
   { id: 'osore',    name: 'オソレ',   school: 'mage', lv: 6, target: 'all', effect: 'fear', amount: 3, combat: true, desc: '敵全体を怯ませ、ACを3上げる' },
   { id: 'joubutsu', name: 'ジョウブツ', school: 'mage', lv: 6, target: 'enemy', effect: 'damage', dice: [10, 100, 0], only: 'undead', combat: true, desc: '不死の敵1体を消し去る' },
   { id: 'teni',     name: 'テンイ',   school: 'mage', lv: 6, target: 'none', effect: 'return', camp: true, desc: '城下町へ転移する' },
+  { id: 'shinokaze', name: 'シノカゼ', school: 'mage', lv: 7, target: 'all', effect: 'deathAll', combat: true, desc: '敵全体を即死させる（成功率30%、効かなかった敵は無傷）' },
+  { id: 'kago',     name: 'カゴ',     school: 'mage', lv: 7, target: 'none', effect: 'wardLong', camp: true, desc: '迷宮にいるあいだ続く障壁を張る（呪文・ブレスを軽減）' },
   { id: 'metsubou', name: 'メツボウ', school: 'mage', lv: 7, target: 'all', effect: 'damage', dice: [10, 10, 0], combat: true, desc: '敵全体を滅ぼす光' },
   // 僧侶系
   { id: 'iyashi',   name: 'イヤシ',   school: 'priest', lv: 1, target: 'ally', effect: 'heal', dice: [1, 8, 0], combat: true, camp: true, desc: '味方1人のHPを回復' },

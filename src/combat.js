@@ -52,7 +52,7 @@ function groupLabel(g) { const n = liveUnits(g).length; return n > 1 ? `${g.mon.
 // 戦闘本体。result: 'win' | 'fled' | 'wipe' を B.result に入れる
 export function* battle(game, groups, opts = {}) {
   const party = game.party;
-  const B = { groups, round: 0, partyAC: 0, result: null, exp: 0, gold: 0, boss: !!opts.boss, lair: !!opts.lair, noRun: !!opts.noRun || !!opts.boss };
+  const B = { groups, round: 0, partyAC: 0, result: null, exp: 0, gold: 0, boss: !!opts.boss, lair: !!opts.lair, noRun: !!opts.noRun || !!opts.boss, ward: game.dungeonWard || 0 };
   game.battle = B;
   for (const c of party) { c._silenced = false; c._acBuff = 0; }
   game.log(groups.map(groupLabel).join('、') + ' が現れた！', 'enc');
@@ -245,19 +245,23 @@ function* castSpell(game, B, c, sp, target) {
       const g = B.groups.includes(target) ? target : liveGroups(B)[0];
       if (!g) return;
       let n = 0;
-      for (const u of liveUnits(g)) {
-        if (g.mon.flags.noSleep || (isResisted(B, g))) continue;
-        if (R.chance(0.75 - g.mon.lv * 0.05)) { u.asleep = R.range(2, 4); n++; }
+      const one = sp.target === 'enemy';
+      const pool = liveUnits(g);
+      if (!pool.length) return;
+      for (const u of one ? [R.pick(pool)] : pool) {
+        if (g.mon.flags.noSleep || g.mon.flags.boss || (isResisted(B, g))) continue;
+        if (R.chance((one ? 0.95 : 0.75) - g.mon.lv * 0.05)) { u.asleep = R.range(2, one ? 5 : 4); n++; }
       }
       game.log(n ? `${g.mon.name}が${n}体眠った。` : `${g.mon.name}は眠らなかった。`);
       yield 1; return;
     }
     case 'silence': {
-      const g = B.groups.includes(target) ? target : liveGroups(B)[0];
-      if (!g) return;
+      const gs = sp.target === 'all' ? liveGroups(B) : [B.groups.includes(target) ? target : liveGroups(B)[0]].filter(Boolean);
+      if (!gs.length) return;
       let n = 0;
-      for (const u of liveUnits(g)) if (!(isResisted(B, g)) && R.chance(0.7 - g.mon.lv * 0.03)) { u.silenced = true; n++; }
-      game.log(n ? `${g.mon.name}${n}体の呪文を封じた。` : `${g.mon.name}には効かなかった。`);
+      for (const g of gs) for (const u of liveUnits(g)) if (!(isResisted(B, g)) && R.chance(0.7 - g.mon.lv * 0.03)) { u.silenced = true; n++; }
+      const who = sp.target === 'all' ? '魔物たち' : gs[0].mon.name;
+      game.log(n ? `${who}${n}体の呪文を封じた。` : `${who}には効かなかった。`);
       yield 1; return;
     }
     case 'death': {
@@ -282,7 +286,10 @@ function* castSpell(game, B, c, sp, target) {
     }
     case 'ac': {
       if (sp.target === 'party') { B.partyAC += sp.amount; game.log(`一行の守りが固くなった（AC-${sp.amount}）。`); }
-      else if (target && isAlive(target)) { target._acBuff = (target._acBuff || 0) + sp.amount; game.log(`${target.name}の守りが固くなった（AC-${sp.amount}）。`); }
+      else {
+        const t = sp.target === 'self' ? c : target;
+        if (t && isAlive(t)) { t._acBuff = (t._acBuff || 0) + sp.amount; game.log(`${t.name}の守りが固くなった（AC-${sp.amount}）。`); }
+      }
       yield 1; return;
     }
     case 'ward': {
@@ -337,6 +344,16 @@ function* castSpell(game, B, c, sp, target) {
         if (R.chance(p)) { n++; onKillQuiet(B, g, u, c); }
       }
       game.log(n ? `${g.mon.name}${n > 1 ? n + '体' : ''}の命を奪った。` : `${g.mon.name}には効かなかった。`);
+      yield 1; return;
+    }
+    case 'deathAll': {
+      let n = 0, total = 0;
+      for (const g of liveGroups(B)) for (const u of liveUnits(g)) {
+        total++;
+        if (g.mon.flags.boss || isResisted(B, g)) continue;
+        if (R.chance(0.3)) { n++; onKillQuiet(B, g, u, c); }
+      }
+      game.log(n ? `死の風が吹き抜けた。魔物${n}体の命を奪った。` : '死の風は魔物たちに届かなかった。');
       yield 1; return;
     }
     case 'drain': {
