@@ -202,21 +202,23 @@ export class Game {
     }
     const used = new Set([...this.party, ...this.reserve].map(c => c.name));
     while (this.party.length < 6) {
-      // 足りない役割を補充
-      const have = this.party.map(c => c.cls);
-      let slot = comp.slots.find(([cls, fb]) => !have.includes(cls) && !(fb && have.includes(fb) && have.filter(h => h === fb).length < comp.slots.filter(s => s[0] === fb || s[1] === fb).length && false));
-      const counts = {};
-      for (const h of have) counts[h] = (counts[h] || 0) + 1;
-      slot = comp.slots.find(([cls, fb]) => {
-        const need = comp.slots.filter(s => s[0] === cls).length;
-        const got = (counts[cls] || 0) + (fb ? 0 : 0);
-        return got < need;
-      }) || comp.slots[this.party.length];
+      // 足りない役割を補充：今の仲間を構成の枠に当てはめ、空いた枠の職業を加える。
+      // 枠の職業 → 代わりの職業（例：忍者の枠の戦士）→ 同じ役割（転職した仲間など）の順に当てはめる
+      const pool = [...this.party];
+      const filled = comp.slots.map(() => false);
+      const take = (test) => comp.slots.forEach((sl, i) => {
+        if (filled[i]) return;
+        const j = pool.findIndex(p => test(p, sl));
+        if (j >= 0) { pool.splice(j, 1); filled[i] = true; }
+      });
+      take((p, [c]) => p.cls === c);
+      take((p, [, fb]) => !!fb && p.cls === fb);
+      take((p, [c]) => roleOf(p) === roleOf({ cls: c }));
+      const slot = comp.slots[filled.indexOf(false)] || comp.slots[this.party.length];
       const [cls, fb, al] = slot;
       const ok = this.party.find(p => p.align === 'G') ? 'G' : this.party.find(p => p.align === 'E') ? 'E' : al;
       const c = createCharacter(cls, { align: CLASSES[cls].align.includes(ok) ? ok : al, fallback: fb, used, tries: 60 });
       used.add(c.name);
-      counts[c.cls] = (counts[c.cls] || 0) + 1;
       // 新人は支度金を持ってくる
       this.gold += R.range(100, 200);
       this.party.push(c);

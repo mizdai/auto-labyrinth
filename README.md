@@ -60,7 +60,7 @@
 
 ```bash
 node tools/sim.mjs <seed> <最大手数>   # ヘッドレスでAIに攻略させる
-node tools/diag.mjs <seed> <最大手数>  # 階ごとの全滅数・撤退理由など
+node tools/diag.mjs <seed> <最大手数> [パーティ構成]  # 階ごとの全滅数・撤退理由など
 node tools/lairloop.mjs <seed> <最大手数>  # 玄室からの逃走の繰り返しと帰還中の全滅
 node tools/loopcheck.mjs <開始seed> <seed数> <最大手数>  # 狭い範囲を往復し続ける状態の検出
 node tools/lairtrap.mjs  # 玄室の部屋の中から始めたときに往復しないことの確認
@@ -70,5 +70,5 @@ node tools/turnrate.mjs <開始seed> <seed数> <最大手数>  # テーマごと
 node tools/underlevel.mjs <開始seed> <seed数> <最大手数>  # 最低レベルに届かない仲間を連れて歩いた割合
 node tools/spelluse.mjs <開始seed> <seed数> <最大手数>  # 仲間が唱えた呪文ごとの回数
 node tools/aoedeaths.mjs <開始seed> <seed数> <最大手数>  # ブレス・魔物の呪文で倒れた仲間の数（戦闘100回あたり）
-node tools/classchange.mjs <開始seed> <seed数> <最大手数>  # 転職の時期と、最後のパーティの職業
+node tools/classchange.mjs <開始seed> <seed数> <最大手数> [パーティ構成]  # 転職の時期と、最後のパーティの職業
 ```

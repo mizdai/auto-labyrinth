@@ -1,9 +1,9 @@
 import { Game } from '../src/game.js';
 import { R } from '../src/rng.js';
 import { partyLevel } from '../src/ai.js';
-const seed = +(process.argv[2] || 1), maxTicks = +(process.argv[3] || 1_000_000);
+const seed = +(process.argv[2] || 1), maxTicks = +(process.argv[3] || 1_000_000), composition = process.argv[4] || 'good';
 R.s = seed;
-const g = Game.newGame({});
+const g = Game.newGame({ composition });
 g.seed = seed * 31 + 7;
 const wipeAt = {}, returnWhy = {}, deaths = {};
 let firstReach = {};
