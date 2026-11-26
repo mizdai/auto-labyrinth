@@ -297,7 +297,8 @@ export function shouldReturn(game) {
   }
   return null;
 }
-import { expNext as nextExp, expFor } from './character.js';
+import { expNext as nextExp, expFor, meetsReq, knowsSpell, roleOf } from './character.js';
+import { CLASSES } from './data.js';
 
 // 野営での回復計画：[caster, spell, target] を返す
 // hurtBelow: この割合未満のHPの仲間を回復対象にする
@@ -367,4 +368,44 @@ export function campPlan(game, hurtBelow = 0.8) {
   const avgHp = alive.reduce((t, c) => t + c.hp / c.maxhp, 0) / Math.max(1, alive.length);
   reserveCtx = { game, emergency: avgHp < 0.3 };
   try { return campPlanInner(game, hurtBelow); } finally { reserveCtx = null; }
+}
+
+// ================= 転職 =================
+// 転職するのは、次の条件をすべて満たすときだけ（1回の帰還で1人まで）
+// (a) 得をする転職：戦士→君主・侍、盗賊→忍者、全部の呪文を覚えた魔術師→僧侶、僧侶→魔術師。一度就いた職業には戻らない
+// (b) 今の職業で育ち切ってから：戦士・盗賊はLv10以上、魔術師・僧侶はその系統の呪文を全部覚えてから
+// (c') 立て直し中でない：一行に戻したい仲間が寺院に安置されたままでない、全員が健康、お金が平均Lv×300G以上
+// (d) 転職したばかりの仲間（Lv10未満）がいない
+// (e) 前列向きの仲間が減らない（3人いれば3人を保つ）、回復役1人と罠を外せる仲間1人が転職後も残る
+const SICK = ['dead', 'ash', 'stoned', 'paralyzed'];
+export function classChangePlan(game) {
+  const P = game.party;
+  if (P.length < 6 || P.some(c => c.status !== 'ok')) return null;
+  const avg = partyLevel(game);
+  // 一行に戻したい（平均Lvの8割以上の）仲間が、寺院に安置されたままなら見送る
+  if (game.reserve.some(c => SICK.includes(c.status) && c.level >= avg * 0.8)) return null;
+  if (game.gold < avg * 300) return null;
+  if (P.some(c => c.history && c.history.length && c.level < 10)) return null;
+  const cands = [];
+  for (const c of P) {
+    const held = new Set([c.cls, ...(c.history || [])]);
+    const ok = (k) => !held.has(k) && meetsReq(c.stats, k) && CLASSES[k].align.includes(c.align);
+    const allOf = (school) => SPELLS.filter(s => s.school === school).every(s => knowsSpell(c, s));
+    let to = null;
+    if (c.cls === 'fighter' && c.level >= 10) to = ['lord', 'samurai'].find(ok);
+    else if (c.cls === 'thief' && c.level >= 10 && ok('ninja')) to = 'ninja';
+    else if (c.cls === 'mage' && allOf('mage') && ok('priest')) to = 'priest';
+    else if (c.cls === 'priest' && allOf('priest') && ok('mage')) to = 'mage';
+    if (to) cands.push({ c, cls: to });
+  }
+  cands.sort((a, b) => b.c.level - a.c.level);
+  for (const { c, cls } of cands) {
+    const after = (x) => (x === c ? { ...x, cls } : x);
+    const front = P.filter(x => roleOf(after(x)) === 'front').length;
+    const healer = P.some(x => x === c ? (CLASSES[cls].spells.priest || maxSlots(c).priest.some(v => v > 0)) : maxSlots(x).priest.some(v => v > 0));
+    const trap = P.some(x => ['thief', 'ninja'].includes(after(x).cls));
+    const frontBefore = P.filter(x => roleOf(x) === 'front').length;
+    if (front >= Math.min(3, frontBefore) && healer && trap) return { c, cls };
+  }
+  return null;
 }

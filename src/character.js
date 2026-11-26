@@ -1,6 +1,6 @@
 // キャラクター生成・能力計算
 import { R, diceAvg } from './rng.js';
-import { RACES, CLASSES, STATS, STAT_NAMES, SPELLS, NAME_SYLLABLES, NAME_ENDINGS } from './data.js';
+import { RACES, CLASSES, STATS, STAT_NAMES, SPELLS, SPELL_BY_ID, NAME_SYLLABLES, NAME_ENDINGS } from './data.js';
 import { ITEMS, SLOTS } from './items.js';
 
 let nextId = 1;
@@ -95,7 +95,8 @@ export const isAlive = (c) => c.status !== 'dead' && c.status !== 'ash' && c.sta
 export const canAct = (c) => c.status === 'ok';
 export const isHealthy = (c) => c.status === 'ok' || c.status === 'asleep';
 
-export function maxSlots(c) {
+// 今の職業とレベルで使える呪文の回数（転職前に覚えた呪文は含まない）
+function classSlots(c) {
   const res = { mage: [0, 0, 0, 0, 0, 0, 0], priest: [0, 0, 0, 0, 0, 0, 0] };
   const sp = CLASSES[c.cls].spells;
   for (const school of Object.keys(sp)) {
@@ -107,13 +108,43 @@ export function maxSlots(c) {
   }
   return res;
 }
+// 呪文の回数。転職前に覚えた呪文（c.learned）があるレベルは、その呪文の数だけは回数が残る
+export function maxSlots(c) {
+  const res = classSlots(c);
+  if (c.learned && c.learned.length) {
+    const cnt = { mage: [0, 0, 0, 0, 0, 0, 0], priest: [0, 0, 0, 0, 0, 0, 0] };
+    for (const id of c.learned) { const s = SPELL_BY_ID[id]; if (s) cnt[s.school][s.lv - 1]++; }
+    for (const sc of ['mage', 'priest']) for (let i = 0; i < 7; i++) res[sc][i] = Math.max(res[sc][i], Math.min(9, cnt[sc][i]));
+  }
+  return res;
+}
+export const knowsSpell = (c, sp) => classSlots(c)[sp.school][sp.lv - 1] > 0 || !!(c.learned && c.learned.includes(sp.id));
 export function restoreMP(c) { const m = maxSlots(c); c.mp = { mage: [...m.mage], priest: [...m.priest] }; }
 export function knownSpells(c) {
-  const m = maxSlots(c);
-  return SPELLS.filter(s => m[s.school][s.lv - 1] > 0);
+  const m = classSlots(c);
+  return SPELLS.filter(s => m[s.school][s.lv - 1] > 0 || (c.learned && c.learned.includes(s.id)));
 }
 export function canCast(c, sp) {
-  return canAct(c) && maxSlots(c)[sp.school][sp.lv - 1] > 0 && c.mp[sp.school][sp.lv - 1] > 0;
+  return canAct(c) && c.mp[sp.school][sp.lv - 1] > 0 && knowsSpell(c, sp);
+}
+
+// 転職：レベル1・経験値0に戻り、能力値は種族の基本値に戻る。
+// 最大HPと、それまでに覚えた呪文は残る（呪文の回数は、覚えている呪文の数だけ残る）
+export function changeClass(c, cls) {
+  const from = c.cls;
+  c.learned = [...new Set([...(c.learned || []), ...knownSpells(c).map(s => s.id)])];
+  c.history = [...(c.history || []), from];
+  c.cls = cls;
+  c.level = 1; c.exp = 0;
+  c.stats = { ...RACES[c.race].base };
+  c.status = 'ok'; c.hp = c.maxhp;
+  const removed = [];
+  for (const s of SLOTS) {
+    const e = c.equip[s];
+    if (e && !canEquip(c, ITEMS[e.id])) { removed.push(e); c.equip[s] = null; }
+  }
+  restoreMP(c);
+  return { from, removed };
 }
 export function hasMP(c) { return c.mp.mage.some(v => v > 0) || c.mp.priest.some(v => v > 0); }
 export function mpRatio(c) {

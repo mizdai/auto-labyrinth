@@ -4,12 +4,12 @@ import { CLASSES, SPELL_BY_ID, INN_ROOMS, TEMPLE_COST } from './data.js';
 import { ITEMS, SLOTS, SHOP_BASE, itemName } from './items.js';
 import {
   createCharacter, isAlive, canAct, restoreMP, tryLevelUp, itemScore, canEquip,
-  canCast, roleOf, getNextId, setNextId, maxSlots, charAC,
+  canCast, roleOf, getNextId, setNextId, maxSlots, charAC, changeClass,
 } from './character.js';
 import { getFloor, findPath, W, H, DX, DY, DIR_NAMES, MAX_FLOOR, MAP_VERSION, THEMES, OPEN } from './dungeon.js';
 import { battle, makeEncounter, bossEncounter, damageChar } from './combat.js';
 import {
-  shouldReturn, targetFloor, readyFor, campPlan, partyCondition, policy, partyLevel, recommendedLevel,
+  shouldReturn, targetFloor, readyFor, campPlan, partyCondition, policy, partyLevel, recommendedLevel, classChangePlan,
 } from './ai.js';
 
 export const SAVE_KEY = 'autoLabyrinth.save.v1';
@@ -128,6 +128,7 @@ export class Game {
     yield* this.temple();
     yield* this.fillParty();
     yield* this.inn();
+    yield* this.training();
     yield* this.identify();
     yield* this.shop();
     this.sortParty();
@@ -170,7 +171,7 @@ export class Game {
     this.reserve = this.reserve.filter(c => c.status !== 'lost');
     // 復帰した控えを戦力として戻す
     for (const r of this.reserve.filter(c => c.status === 'ok')) {
-      const weaker = this.party.filter(p => p.level < r.level - 1 && (p.cls === r.cls || roleOf(p) === roleOf(r))).sort((a, b) => (a.cls === r.cls ? -1 : 0) - (b.cls === r.cls ? -1 : 0) || a.level - b.level)[0];
+      const weaker = this.party.filter(p => !(p.history && p.history.length) && p.level < r.level - 1 && (p.cls === r.cls || roleOf(p) === roleOf(r))).sort((a, b) => (a.cls === r.cls ? -1 : 0) - (b.cls === r.cls ? -1 : 0) || a.level - b.level)[0];
       if (weaker) {
         this.party[this.party.indexOf(weaker)] = r;
         this.reserve.splice(this.reserve.indexOf(r), 1);
@@ -287,6 +288,20 @@ export class Game {
     }
     for (const c of this.reserve) { c.weeks = (c.weeks || 0) + 1; if (c.weeks % 52 === 0) c.age++; }
   }
+  // 訓練場：AIが決めた仲間を転職させる（1回の帰還で1人まで）
+  *training() {
+    const plan = classChangePlan(this);
+    if (!plan) return;
+    this.townState = '訓練場';
+    const { c, cls } = plan;
+    const { from, removed } = changeClass(c, cls);
+    this.log(`訓練場で、${c.name}が${CLASSES[from].name}から${CLASSES[cls].name}に転職した！`, 'good');
+    this.log(`レベル1に戻り、能力値は種族の基本値に戻った。最大HP${c.maxhp}と覚えた呪文はそのまま。`);
+    for (const e of removed) this.bag.push(e);
+    if (removed.length) this.log(`${removed.map(e => itemName(e)).join('、')}は装備できなくなり、袋にしまった。`);
+    yield 2;
+  }
+
   goldReserve() { return Math.round(TEMPLE_COST.dead * partyLevel(this) * 1.2); }
 
   *identify() {
