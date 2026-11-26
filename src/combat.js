@@ -226,19 +226,27 @@ function* castSpell(game, B, c, sp, target) {
       if (sp.target === 'enemy') { const g = B.groups.includes(target) && liveUnits(target).length ? target : liveGroups(B)[0]; if (g) targets = [[g, R.pick(liveUnits(g))]]; }
       else if (sp.target === 'group') { const g = B.groups.includes(target) && liveUnits(target).length ? target : liveGroups(B)[0]; if (g) targets = liveUnits(g).map(u => [g, u]); }
       else if (sp.target === 'all') { for (const g of liveGroups(B)) for (const u of liveUnits(g)) targets.push([g, u]); }
-      let kills = 0, total = 0, resisted = 0;
       if (sp.only === 'undead' && targets.length && !targets[0][0].mon.flags.undead) {
         game.log(`${targets[0][0].mon.name}には効かない。`); yield 1; return;
       }
+      // グループごとに「〇〇3体に6〜35のダメージ。2体を倒した。」の1行にまとめる
+      const byGroup = new Map();
       for (const [g, u] of targets) {
-        if (isResisted(B, g)) { resisted++; continue; }
+        const r = byGroup.get(g) || { ds: [], kills: 0, resisted: 0, n: 0 };
+        byGroup.set(g, r); r.n++;
+        if (isResisted(B, g)) { r.resisted++; continue; }
         const d = R.roll(sp.dice);
-        u.hp -= d; total += d;
-        if (u.hp <= 0) { kills++; onKillQuiet(B, g, u, c); }
+        u.hp -= d; r.ds.push(d);
+        if (u.hp <= 0) { r.kills++; onKillQuiet(B, g, u, c); }
       }
-      const name = targets.length ? targets[0][0].mon.name : '魔物';
-      if (resisted && resisted === targets.length) game.log(`${name}には呪文が効かなかった。`);
-      else game.log(`${sp.target === 'all' ? '魔物たち' : name}に合計${total}のダメージ。${kills ? kills + '体を倒した。' : ''}`);
+      for (const [g, r] of byGroup) {
+        const name = g.mon.name;
+        if (!r.ds.length) { game.log(`${name}には呪文が効かなかった。`); continue; }
+        let msg = `${name}${r.n > 1 ? r.n + '体' : ''}に${rangeStr(r.ds)}のダメージ。`;
+        if (r.kills) msg += r.n > 1 ? `${r.kills}体を倒した。` : '倒した。';
+        if (r.resisted) msg += `${r.resisted}体には効かなかった。`;
+        game.log(msg);
+      }
       yield 1; return;
     }
     case 'sleep': {
@@ -439,12 +447,13 @@ function* monsterAction(game, B, g, u) {
     game.log(`${m.name}は息を吐きかけた！`, 'bad');
     yield 1;
     const base = Math.max(2, Math.floor(u.hp / (m.flags.boss ? 4 : 2)));
+    const hits = [];
     for (const c of party) {
       if (!isAlive(c)) continue;
-      let d = wardCut(B, R.chance(saveChance(c)) ? Math.floor(base / 2) : base);
-      damageChar(game, c, d);
+      hits.push([c, wardCut(B, R.chance(saveChance(c)) ? Math.floor(base / 2) : base)]);
       if (m.flags.poison && R.chance(0.5)) c.poison = true;
     }
+    damageParty(game, hits);
     yield 1; return;
   }
   // 呪文
@@ -459,7 +468,7 @@ function* monsterAction(game, B, g, u) {
     yield 1;
     const alive = party.filter(isAlive);
     if (sp.single) { const t = R.pick(alive); if (t) damageChar(game, t, wardCut(B, R.dice(sp.single[0], sp.single[1]))); }
-    else if (sp.all) for (const t of alive) { let d = R.dice(sp.all[0], sp.all[1]); if (R.chance(saveChance(t))) d = Math.floor(d / 2); damageChar(game, t, wardCut(B, d)); }
+    else if (sp.all) damageParty(game, alive.map(t => { let d = R.dice(sp.all[0], sp.all[1]); if (R.chance(saveChance(t))) d = Math.floor(d / 2); return [t, wardCut(B, d)]; }));
     else if (sp.sleep) { let n = 0; for (const t of alive) if (t.status === 'ok' && !R.chance(saveChance(t)) && !wardBlocks(B)) { t.status = 'asleep'; n++; } game.log(n ? `${n}人が眠ってしまった。` : '誰も眠らなかった。'); }
     else if (sp.silence) { let n = 0; for (const t of alive) if (!R.chance(saveChance(t)) && !wardBlocks(B)) { t._silenced = true; n++; } game.log(n ? `${n}人が呪文を封じられた。` : '呪文封じは効かなかった。'); }
     else if (sp.heal) { const t = g.units.filter(x => x.hp > 0).sort((a, b) => a.hp / a.max - b.hp / b.max)[0]; if (t) t.hp = Math.min(t.max, t.hp + R.dice(sp.heal[0], sp.heal[1])); game.log(`${m.name}の傷が癒えた。`); }
@@ -498,6 +507,19 @@ function isResisted(B, g) {
 // 味方の障壁（ケッカイ）：魔物の呪文・ブレスのダメージを減らし、効果を防ぐ
 const wardCut = (B, d) => Math.max(0, Math.round(d * (1 - (B.ward || 0))));
 const wardBlocks = (B) => (B.ward || 0) > 0 && R.chance(B.ward);
+
+const rangeStr = (ds) => { const lo = Math.min(...ds), hi = Math.max(...ds); return lo === hi ? `${lo}` : `${lo}〜${hi}`; };
+
+// 何人かにまとめてダメージを与え、ログは1行にまとめる（倒れた仲間だけは1人ずつ書く）
+// hits: [[仲間, ダメージ], ...]
+export function damageParty(game, hits) {
+  hits = hits.filter(([c]) => isAlive(c));
+  if (!hits.length) return;
+  const everyone = hits.length === game.party.filter(isAlive).length && hits.length > 1;
+  const who = everyone ? '一行は' : hits.length <= 2 ? hits.map(([c]) => c.name).join('と') + 'は' : `${hits.length}人が`;
+  game.log(`${who}${rangeStr(hits.map(([, d]) => d))}のダメージを受けた。`, 'hurt');
+  for (const [c, d] of hits) damageChar(game, c, d, true);
+}
 
 export function damageChar(game, c, d, quiet = false) {
   if (!isAlive(c)) return;

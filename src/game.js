@@ -7,7 +7,7 @@ import {
   canCast, roleOf, getNextId, setNextId, maxSlots, charAC, changeClass,
 } from './character.js';
 import { getFloor, findPath, W, H, DX, DY, DIR_NAMES, MAX_FLOOR, MAP_VERSION, THEMES, OPEN } from './dungeon.js';
-import { battle, makeEncounter, bossEncounter, damageChar } from './combat.js';
+import { battle, makeEncounter, bossEncounter, damageChar, damageParty } from './combat.js';
 import {
   shouldReturn, targetFloor, readyFor, campPlan, partyCondition, policy, partyLevel, recommendedLevel, classChangePlan,
 } from './ai.js';
@@ -586,7 +586,8 @@ export class Game {
       let res = null;
       if (cell.type === 'pit') {
         this.log('落とし穴だ！', 'bad');
-        for (const c of this.party) if (isAlive(c) && !R.chance(c.stats.agi * 0.03)) damageChar(this, c, R.dice(Math.max(1, this.floor), 4));
+        const hits = this.party.filter(c => isAlive(c) && !R.chance(c.stats.agi * 0.03)).map(c => [c, R.dice(Math.max(1, this.floor), 4)]);
+        if (hits.length) damageParty(this, hits); else this.log('全員うまくかわした。');
         yield 2;
       } else if (cell.type === 'teleport') {
         this.log('床の魔法陣が光った！ どこかへ飛ばされた。', 'bad');
@@ -920,7 +921,7 @@ export class Game {
         case '毒針': opener.poison = true; this.log(`${opener.name}は毒に冒された。`, 'bad'); break;
         case 'ボウガン': damageChar(this, opener, R.dice(floor, 8)); break;
         case 'ガス': for (const c of all) if (!R.chance(c.stats.luk * 0.03)) c.poison = true; this.log('毒ガスが広がった。', 'bad'); break;
-        case '爆弾': for (const c of all) damageChar(this, c, R.chance(c.stats.luk * 0.03) ? R.dice(floor, 3) : R.dice(floor, 6)); break;
+        case '爆弾': damageParty(this, all.map(c => [c, R.chance(c.stats.luk * 0.03) ? R.dice(floor, 3) : R.dice(floor, 6)])); break;
         case 'しびれ針': opener.status = 'paralyzed'; this.log(`${opener.name}は麻痺した。`, 'bad'); break;
         case 'テレポーター': { const p = R.pick(this.F.openCells()); this.x = p.x; this.y = p.y; } this.knownMap()[this.y * W + this.x] = 1; this.log('どこかへ飛ばされた！', 'bad'); yield 1; return;
         case '術者殺し': for (const c of all) if ((maxSlots(c).mage[0] || maxSlots(c).priest[0]) && !R.chance(c.stats.luk * 0.03)) { c.status = 'paralyzed'; this.log(`${c.name}は麻痺した。`, 'bad'); } break;
