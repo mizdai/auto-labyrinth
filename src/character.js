@@ -1,19 +1,34 @@
 // キャラクター生成・能力計算
 import { R, diceAvg } from './rng.js';
-import { RACES, CLASSES, STATS, STAT_NAMES, SPELLS, SPELL_BY_ID, NAME_SYLLABLES, NAME_ENDINGS } from './data.js';
+import { RACES, CLASSES, STATS, STAT_NAMES, SPELLS, SPELL_BY_ID, NAME_SYLLABLES, NAME_SYLLABLES_SMALL, NAME_ENDINGS } from './data.js';
 import { ITEMS, SLOTS } from './items.js';
 
 let nextId = 1;
 export function setNextId(n) { nextId = n; }
 export function getNextId() { return nextId; }
 
+// 名前の生成：音を2〜3個つなげ、ときどき長音（ー）や促音（ッ）を挟み、語尾を付ける。
+// まれに「・」でつないだ2語の名前にする。全体で8文字まで
+function namePart(minS, maxS) {
+  const n = R.range(minS, maxS);
+  let s = '', prev = '';
+  for (let i = 0; i < n; i++) {
+    let syl;
+    do { syl = R.chance(0.22) ? R.pick(NAME_SYLLABLES_SMALL) : R.pick(NAME_SYLLABLES); } while (syl === prev);
+    prev = syl;
+    // 促音は、カ行・サ行・タ行・パ行・濁音などの前だけ
+    if (i > 0 && R.chance(0.06) && !/[ーッン]$/.test(s) && /^[カ-ドバ-ポフヴ]/.test(syl) && !/^[ナ-ノ]/.test(syl)) s += 'ッ';
+    s += syl;
+    if (i < n - 1 && R.chance(0.12)) s += 'ー';
+  }
+  const end = R.pick(NAME_ENDINGS);
+  if (!(s.endsWith('ー') && /^[ーッ]/.test(end))) s += end;
+  return s;
+}
 export function randomName(used = new Set()) {
-  for (let t = 0; t < 50; t++) {
-    let n = '';
-    const len = R.range(2, 3);
-    for (let i = 0; i < len; i++) n += R.pick(NAME_SYLLABLES);
-    n += R.pick(NAME_ENDINGS);
-    if (n.length <= 6 && !used.has(n)) return n;
+  for (let t = 0; t < 80; t++) {
+    const n = R.chance(0.1) ? namePart(1, 2) + '・' + namePart(1, 2) : namePart(2, 3);
+    if (n.length <= 8 && n.length >= 2 && !used.has(n)) return n;
   }
   return 'ナナシ' + nextId;
 }
