@@ -11,6 +11,11 @@ export function getNextId() { return nextId; }
 // まれに「・」でつないだ2語の名前にする。全体で8文字まで
 function namePart(minS, maxS) {
   const n = R.range(minS, maxS);
+  return makePart(n);
+}
+// 音の数：1つ（語尾付き）20%、2つ 50%、3つ 30%
+function nameSyllables() { const r = R.next(); return r < 0.2 ? 1 : r < 0.7 ? 2 : 3; }
+function makePart(n) {
   let s = '', prev = '';
   for (let i = 0; i < n; i++) {
     let syl;
@@ -21,13 +26,15 @@ function namePart(minS, maxS) {
     s += syl;
     if (i < n - 1 && R.chance(0.12)) s += 'ー';
   }
-  const end = R.pick(NAME_ENDINGS);
+  let end = R.pick(NAME_ENDINGS);
+  // 音が1つだけのときは、語尾を必ず付ける（2文字以上にする）
+  while (s.length + end.length < 2) end = R.pick(NAME_ENDINGS);
   if (!(s.endsWith('ー') && /^[ーッ]/.test(end))) s += end;
   return s;
 }
 export function randomName(used = new Set()) {
   for (let t = 0; t < 80; t++) {
-    const n = R.chance(0.1) ? namePart(1, 2) + '・' + namePart(1, 2) : namePart(2, 3);
+    const n = R.chance(0.1) ? namePart(1, 2) + '・' + namePart(1, 2) : makePart(nameSyllables());
     if (n.length <= 8 && n.length >= 2 && !used.has(n)) return n;
   }
   return 'ナナシ' + nextId;
