@@ -4,7 +4,7 @@ import { CLASSES, SPELL_BY_ID, INN_ROOMS, TEMPLE_COST } from './data.js';
 import { ITEMS, SLOTS, SHOP_BASE, itemName } from './items.js';
 import {
   createCharacter, isAlive, canAct, restoreMP, tryLevelUp, itemScore, canEquip,
-  canCast, roleOf, getNextId, setNextId, maxSlots, charAC, changeClass,
+  canCast, roleOf, getNextId, setNextId, maxSlots, charAC, changeClass, charValue,
 } from './character.js';
 import { getFloor, findPath, W, H, DX, DY, DIR_NAMES, MAX_FLOOR, MAP_VERSION, THEMES, OPEN } from './dungeon.js';
 import { battle, makeEncounter, bossEncounter, damageChar, damageParty } from './combat.js';
@@ -151,7 +151,7 @@ export class Game {
     this.townState = '寺院';
     const order = ['paralyzed', 'stoned', 'dead', 'ash'];
     const patients = [...this.party, ...this.reserve].filter(c => order.includes(c.status));
-    patients.sort((a, b) => (this.party.includes(b) - this.party.includes(a)) || b.level - a.level);
+    patients.sort((a, b) => (this.party.includes(b) - this.party.includes(a)) || charValue(b) - charValue(a));
     for (const c of patients) {
       const cost = this.templeCost(c);
       if (this.gold < cost) { if (this.party.includes(c)) { this.log(`${c.name}の治療費${cost}Gが足りない。`); yield 1; } continue; }
@@ -170,8 +170,10 @@ export class Game {
     this.party = this.party.filter(c => c.status !== 'lost');
     this.reserve = this.reserve.filter(c => c.status !== 'lost');
     // 復帰した控えを戦力として戻す
-    for (const r of this.reserve.filter(c => c.status === 'ok')) {
-      const weaker = this.party.filter(p => !(p.history && p.history.length) && p.level < r.level - 1 && (p.cls === r.cls || roleOf(p) === roleOf(r))).sort((a, b) => (a.cls === r.cls ? -1 : 0) - (b.cls === r.cls ? -1 : 0) || a.level - b.level)[0];
+    // 有用さ（レベル・転職前の呪文・HP）で比べる。転職して育て直し中（Lv10未満）の仲間は外さない
+    const retraining = (p) => p.history && p.history.length && p.level < 10;
+    for (const r of this.reserve.filter(c => c.status === 'ok').sort((a, b) => charValue(b) - charValue(a))) {
+      const weaker = this.party.filter(p => !retraining(p) && charValue(p) < charValue(r) - 1 && (p.cls === r.cls || roleOf(p) === roleOf(r))).sort((a, b) => (a.cls === r.cls ? -1 : 0) - (b.cls === r.cls ? -1 : 0) || charValue(a) - charValue(b))[0];
       if (weaker) {
         this.party[this.party.indexOf(weaker)] = r;
         this.reserve.splice(this.reserve.indexOf(r), 1);
@@ -180,9 +182,9 @@ export class Game {
         yield 1;
       }
     }
-    // 控えが多すぎる場合は低レベルの者から引退・埋葬
+    // 控えが多すぎる場合は有用さの低い者から引退・埋葬
     if (this.reserve.length > 6) {
-      this.reserve.sort((a, b) => b.level - a.level);
+      this.reserve.sort((a, b) => charValue(b) - charValue(a));
       const gone = this.reserve.splice(6);
       for (const c of gone) this.log(c.status === 'ok' ? `${c.name}は冒険者を引退した。` : `${c.name}は墓地に葬られた。`);
       yield 1;

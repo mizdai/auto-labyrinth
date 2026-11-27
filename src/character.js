@@ -125,6 +125,22 @@ export function maxSlots(c) {
   }
   return res;
 }
+// 仲間としての有用さ（レベル相当）。控えの復帰や蘇生の順番に使う。
+// レベルに加えて、転職前に覚えた呪文（今の職業ではまだ使えない最高レベル×1.5）と、
+// 職業・レベルの割に高いHP（1レベル分の平均の伸びで割った値×0.7）を足す
+export function charValue(c) {
+  const own = classSlots(c);
+  let v = c.level;
+  for (const sc of ['mage', 'priest']) {
+    let hi = 0;
+    for (const id of c.learned || []) { const s = SPELL_BY_ID[id]; if (s && s.school === sc && own[sc][s.lv - 1] === 0) hi = Math.max(hi, s.lv); }
+    v += hi * 1.5;
+  }
+  const hd = CLASSES[c.cls].hd, perLv = hd / 2 + 0.5;
+  const expected = hd * 1.25 + perLv * (c.level - 1);
+  v += Math.max(0, c.maxhp - expected) / perLv * 0.7;
+  return v;
+}
 export const knowsSpell = (c, sp) => classSlots(c)[sp.school][sp.lv - 1] > 0 || !!(c.learned && c.learned.includes(sp.id));
 export function restoreMP(c) { const m = maxSlots(c); c.mp = { mage: [...m.mage], priest: [...m.priest] }; }
 export function knownSpells(c) {
