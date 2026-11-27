@@ -87,6 +87,13 @@ export function createCharacter(cls, opts = {}) {
   return ch;
 }
 
+// 今の職業・レベル・生命力で、最大HPを1から振り直した値（1レベル目は作成時と同じ振り方）
+export function rollMaxHP(c) {
+  const hd = CLASSES[c.cls].hd, vb = vitBonus(c);
+  let t = Math.max(3, hd + R.int(Math.ceil(hd * 0.5)) + vb);
+  for (let l = 2; l <= c.level; l++) t += Math.max(1, R.d(hd) + vb);
+  return t;
+}
 export const vitBonus = (c) => { const v = c.stats.vit; return v <= 3 ? -2 : v <= 5 ? -1 : v >= 18 ? 3 : v >= 17 ? 2 : v >= 16 ? 1 : 0; };
 export const strBonus = (c) => { const v = c.stats.str; return v <= 5 ? -1 : v >= 18 ? 3 : v >= 17 ? 2 : v >= 16 ? 1 : 0; };
 export const agiBonus = (c) => { const v = c.stats.agi; return v <= 5 ? -1 : v >= 18 ? 3 : v >= 16 ? 2 : v >= 14 ? 1 : 0; };
@@ -212,18 +219,20 @@ export function tryLevelUp(c) {
     const beforeSpells = new Set(knownSpells(c).map(s => s.id));
     const hpBefore = c.maxhp;
     c.level++;
-    const cl = CLASSES[c.cls];
-    const gain = Math.max(1, R.d(cl.hd) + vitBonus(c));
-    c.maxhp += gain; c.hp += gain;
-    const changes = [`HP ${hpBefore}→${c.maxhp}`];
+    const statChanges = [];
     for (const k of STATS) {
       const r = R.next();
       const downP = c.age >= 40 ? 0.15 : 0.04;
       const old = c.stats[k];
       if (r < 0.28 && c.stats[k] < 18) c.stats[k]++;
       else if (r > 1 - downP && c.stats[k] > 3) c.stats[k]--;
-      if (c.stats[k] !== old) changes.push(`${STAT_NAMES[k]} ${old}→${c.stats[k]}`);
+      if (c.stats[k] !== old) statChanges.push(`${STAT_NAMES[k]} ${old}→${c.stats[k]}`);
     }
+    // HP：全レベル分を振り直し、今の最大HPより高ければその値に、届かなければ1だけ増える
+    const rolled = rollMaxHP(c);
+    const gain = Math.max(1, rolled - c.maxhp);
+    c.maxhp += gain; c.hp += gain;
+    const changes = [`HP ${hpBefore}→${c.maxhp}`, ...statChanges];
     const m = maxSlots(c);
     for (const sc of ['mage', 'priest']) for (let i = 0; i < 7; i++) c.mp[sc][i] = Math.max(c.mp[sc][i], m[sc][i]);
     const learned = knownSpells(c).filter(s => !beforeSpells.has(s.id)).map(s => s.name);

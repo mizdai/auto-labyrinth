@@ -16,5 +16,5 @@ for (let seed = s0; seed < s0 + n; seed++) {
   for (; t < maxTicks && !g.cleared; t++) it.next();
   console.log(`seed ${seed}: ${g.cleared ? 'クリア' : '未クリア'} t${t} 全滅${g.stats.wipes ?? '?'}`);
   for (const e of ev) console.log('  ' + e);
-  console.log('  最終: ' + g.party.map(c => `${c.name}${c.cls}${c.history ? '(' + c.history.join('/') + ')' : ''}Lv${c.level}`).join(' '));
+  console.log('  最終: ' + g.party.map(c => `${c.name}${c.cls}${c.history ? '(' + c.history.join('/') + ')' : ''}Lv${c.level}HP${c.maxhp}`).join(' '));
 }
