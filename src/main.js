@@ -146,8 +146,14 @@ function render() {
     const st = c.status !== 'ok' ? STATUS_NAMES[c.status] : (c.poison ? '毒' : '');
     const cls = !isAlive(c) ? 'dead' : (st ? 'bad' : '');
     const pct = c.maxhp ? Math.max(0, c.hp / c.maxhp) : 0;
+    // 呪文の残り回数（全レベルの合計）を、最大回数に対する%で
+    const ms = maxSlots(c);
+    let mpMax = 0, mpNow = 0;
+    for (const sc of ['mage', 'priest']) for (let i = 0; i < 7; i++) { mpMax += ms[sc][i]; mpNow += Math.min(c.mp[sc][i], ms[sc][i]); }
+    const mpPct = mpMax ? mpNow / mpMax : 0;
+    const tone = (r) => (r < 0.3 ? 'low' : r < 0.6 ? 'mid' : 'ok');
     html += `<tr class="${cls}" data-i="${i}"><td>${c.name}</td><td>${ALIGN_NAMES[c.align][0]}-${RACES[c.race].name[0]}-${CLASSES[c.cls].ab}(${(c.history ? c.history.length : 0) + 1})</td><td>${c.level}</td><td>${charAC(c, game.battle ? game.battle.partyAC : (game.location === 'dungeon' ? game.dungeonAC || 0 : 0))}</td>`
-      + `<td class="hp">${c.hp}/${c.maxhp}<span class="bar"><i style="width:${(pct * 100) | 0}%;background:${pct < 0.3 ? '#d55' : pct < 0.6 ? '#dc5' : '#6c6'}"></i></span></td><td>${st}</td></tr>`;
+      + `<td class="hp ${tone(pct)}">${c.hp}/${c.maxhp}</td><td class="mp ${tone(mpPct)}">${mpMax ? Math.round(mpPct * 100) + '%' : ''}</td><td>${st}</td></tr>`;
   });
   if (html !== lastPartyHtml) { $('#party tbody').innerHTML = html; lastPartyHtml = html; }
 }

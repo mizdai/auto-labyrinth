@@ -8,7 +8,7 @@ export function setNextId(n) { nextId = n; }
 export function getNextId() { return nextId; }
 
 // 名前の生成：音を2〜3個つなげ、ときどき長音（ー）や促音（ッ）を挟み、語尾を付ける。
-// まれに「・」でつないだ2語の名前にする。全体で8文字まで
+// まれに「・」でつないだ2語の名前にする。全体で6文字まで
 function namePart(minS, maxS) {
   const n = R.range(minS, maxS);
   return makePart(n);
@@ -32,10 +32,16 @@ function makePart(n) {
   if (!(s.endsWith('ー') && /^[ーッ]/.test(end))) s += end;
   return s;
 }
+// 名前の文字数は、まず2〜6文字から同じ確率で決め、その長さになるまで作り直す（いろいろな長さが偏らず出る）
 export function randomName(used = new Set()) {
-  for (let t = 0; t < 80; t++) {
-    const n = R.chance(0.1) ? namePart(1, 2) + '・' + namePart(1, 2) : makePart(nameSyllables());
-    if (n.length <= 8 && n.length >= 2 && !used.has(n)) return n;
+  const len = R.range(2, 6);
+  for (let t = 0; t < 300; t++) {
+    const n = len >= 4 && R.chance(0.12) ? namePart(1, 2) + '・' + namePart(1, 2) : makePart(nameSyllables());
+    if (n.length === len && !used.has(n)) return n;
+  }
+  for (let t = 0; t < 300; t++) {
+    const n = makePart(nameSyllables());
+    if (n.length >= 2 && n.length <= 6 && !used.has(n)) return n;
   }
   return 'ナナシ' + nextId;
 }

@@ -20,9 +20,9 @@ body { overscroll-behavior: none; }
 #party th { font-weight: normal; color: #8899aa; font-size: 11px; text-align: left; }
 #party td, #party th { padding: 2px 3px; }
 #party tr.dead td { color: #ff7070; } #party tr.bad td { color: #ffb060; }
-#party td.hp { white-space: nowrap; }
-.bar { display: inline-block; width: 40px; height: 5px; background: #333; vertical-align: middle; margin-left: 3px; }
-.bar i { display: block; height: 100%; background: #6c6; }
+#party td.hp, #party td.mp { white-space: nowrap; }
+#party tr td.ok { color: #7fd87f; } #party tr td.mid { color: #e8d060; } #party tr td.low { color: #ff6b6b; }
+#party tr.dead td.hp, #party tr.dead td.mp { color: #ff7070; }
 #party tbody tr { cursor: pointer; }
 #modal { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 10; }
 #modal.hidden { display: none; }
