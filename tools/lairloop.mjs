@@ -9,13 +9,13 @@ const fledAt = new Set();
 g.onLog = (t) => {
   if (t === '玄室に入った。' || t.startsWith('避けられない玄室')) inLair = true;
   if (t.endsWith('が現れた！') && !inLair) inLair = false;
-  if (t === '一行は逃げ出した！' && inLair) {
+  if (t === 'パーティは逃げ出した！' && inLair) {
     lairFlees++;
     const key = `${g.floor}:${g.x},${g.y}:${g.stats.trips}`;
     if (fledAt.has(key)) repeatFlees++;
     fledAt.add(key);
   }
-  if (t.startsWith('魔物を倒した') || t === '一行は逃げ出した！') inLair = false;
+  if (t.startsWith('魔物を倒した') || t === 'パーティは逃げ出した！') inLair = false;
   if (t.includes('全滅')) { wipes++; if (g.mode === 'return') wipeInReturn++; }
 };
 const it = g.run();

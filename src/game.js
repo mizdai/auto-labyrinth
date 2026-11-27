@@ -15,8 +15,8 @@ import {
 export const SAVE_KEY = 'autoLabyrinth.save.v1';
 
 export const COMPOSITIONS = {
-  good:    { name: '善の一行（標準）', slots: [['samurai', 'fighter', 'G'], ['fighter', null, 'G'], ['priest', null, 'G'], ['thief', null, 'N'], ['mage', null, 'G'], ['bishop', null, 'G']] },
-  evil:    { name: '悪の一行（忍者狙い）', slots: [['ninja', 'fighter', 'E'], ['fighter', null, 'E'], ['priest', null, 'E'], ['thief', null, 'E'], ['mage', null, 'E'], ['bishop', null, 'E']] },
+  good:    { name: '善のパーティ（標準）', slots: [['samurai', 'fighter', 'G'], ['fighter', null, 'G'], ['priest', null, 'G'], ['thief', null, 'N'], ['mage', null, 'G'], ['bishop', null, 'G']] },
+  evil:    { name: '悪のパーティ（忍者狙い）', slots: [['ninja', 'fighter', 'E'], ['fighter', null, 'E'], ['priest', null, 'E'], ['thief', null, 'E'], ['mage', null, 'E'], ['bishop', null, 'E']] },
   warrior: { name: '戦士重視', slots: [['samurai', 'fighter', 'G'], ['fighter', null, 'G'], ['lord', 'fighter', 'G'], ['priest', null, 'G'], ['thief', null, 'N'], ['mage', null, 'G']] },
   magic:   { name: '呪文重視', slots: [['fighter', null, 'G'], ['fighter', null, 'G'], ['priest', null, 'G'], ['mage', null, 'G'], ['mage', null, 'G'], ['bishop', null, 'G']] },
 };
@@ -176,7 +176,7 @@ export class Game {
         this.party[this.party.indexOf(weaker)] = r;
         this.reserve.splice(this.reserve.indexOf(r), 1);
         this.reserve.push(weaker);
-        this.log(`${r.name}が一行に復帰し、${weaker.name}は酒場で待機することになった。`);
+        this.log(`${r.name}がパーティに復帰し、${weaker.name}は酒場で待機することになった。`);
         yield 1;
       }
     }
@@ -196,7 +196,7 @@ export class Game {
       if (c.status !== 'ok') {
         this.party.splice(this.party.indexOf(c), 1);
         this.reserve.push(c);
-        this.log(`${c.name}は寺院に安置され、一行を離れた。`);
+        this.log(`${c.name}は寺院に安置され、パーティを離れた。`);
         yield 1;
       }
     }
@@ -648,7 +648,7 @@ export class Game {
     if (!caster) return false;
     const sp = canCast(caster, SPELL_BY_ID.kikan) ? SPELL_BY_ID.kikan : SPELL_BY_ID.teni;
     caster.mp[sp.school][sp.lv - 1]--;
-    this.log(`${prefix}${caster.name}は${sp.name}を唱えた。一行は光に包まれ、城下町へ戻った。`, 'spell');
+    this.log(`${prefix}${caster.name}は${sp.name}を唱えた。パーティは光に包まれ、城下町へ戻った。`, 'spell');
     yield 2;
     this.location = 'town';
     return true;
@@ -797,7 +797,7 @@ export class Game {
     for (let k = 0; k < 10; k++) {
       const plan = campPlan(this, hurtBelow);
       if (!plan) break;
-      if (!did) { this.log('一行は野営して傷を手当てした。'); did = true; }
+      if (!did) { this.log('パーティは野営して傷を手当てした。'); did = true; }
       const [caster, sp, t] = plan;
       this.applyCampSpell(caster, sp, t);
       yield 1;
@@ -822,13 +822,13 @@ export class Game {
     let msg = `${caster.name}は${sp.name}を唱えた。`;
     if (sp.effect === 'acLong') {
       this.dungeonAC = sp.amount;
-      msg += `一行の守りが固くなった（迷宮にいるあいだAC-${sp.amount}）。`;
+      msg += `パーティの守りが固くなった（迷宮にいるあいだAC-${sp.amount}）。`;
     }
     if (sp.effect === 'wardLong') {
       this.dungeonWard = Math.min(0.5, 0.3 + caster.level * 0.01);
-      msg += `一行は加護に包まれた（呪文・ブレスを${Math.round(this.dungeonWard * 100)}%軽減）。`;
+      msg += `パーティは加護に包まれた（呪文・ブレスを${Math.round(this.dungeonWard * 100)}%軽減）。`;
     }
-    if (sp.effect === 'heal') { const h = R.roll(sp.dice); if (sp.target === 'party') { for (const p of this.party) if (isAlive(p)) p.hp = Math.min(p.maxhp, p.hp + R.roll(sp.dice)); msg += '一行の傷が癒えた。'; } else { t.hp = Math.min(t.maxhp, t.hp + h); msg += `${t.name}のHPが${h}回復。`; } }
+    if (sp.effect === 'heal') { const h = R.roll(sp.dice); if (sp.target === 'party') { for (const p of this.party) if (isAlive(p)) p.hp = Math.min(p.maxhp, p.hp + R.roll(sp.dice)); msg += 'パーティの傷が癒えた。'; } else { t.hp = Math.min(t.maxhp, t.hp + h); msg += `${t.name}のHPが${h}回復。`; } }
     else if (sp.effect === 'fullheal') { t.hp = t.maxhp; t.poison = false; if (t.status === 'paralyzed') t.status = 'ok'; msg += `${t.name}は完全に回復した。`; }
     else if (sp.effect === 'cure') { t.poison = false; if (t.status === 'paralyzed') t.status = 'ok'; msg += `${t.name}の体が楽になった。`; }
     else if (sp.effect === 'revive') {
@@ -965,7 +965,7 @@ export class Game {
 
   *wipe() {
     this.stats.wipes++;
-    this.log('一行は全滅した…', 'bad');
+    this.log('パーティは全滅した…', 'bad');
     yield 3;
     const lost = Math.floor(this.gold / 4);
     this.gold -= lost;
@@ -982,7 +982,7 @@ export class Game {
     yield 3;
     this.log('迷宮を覆っていた瘴気が晴れていく…。', 'good');
     yield 3;
-    this.log('★ 一行は迷宮の最深部を制した！ ★', 'good');
+    this.log('★ パーティは迷宮の最深部を制した！ ★', 'good');
     yield 3;
     for (const c of this.party) if (isAlive(c)) c.exp += 50000;
     this.gold += 50000;

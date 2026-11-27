@@ -375,7 +375,7 @@ export function campPlan(game, hurtBelow = 0.8) {
 // (a) 得をする転職：まだ覚えていない系統の呪文を覚えられる、呪文を持ったまま前衛職（侍・君主・忍者）になれる、
 //     盗賊から忍者になる、鑑定できる仲間がいなければ司教になる。前衛から後衛へは移らず、一度就いた職業には戻らない
 // (b) 今の職業で育ち切ってから：呪文を使う職業はその系統の呪文を全部覚えてから、それ以外はLv10以上
-// (c') 立て直し中でない：一行に戻したい仲間が寺院に安置されたままでない、全員が健康、お金が平均Lv×300G以上
+// (c') 立て直し中でない：パーティに戻したい仲間が寺院に安置されたままでない、全員が健康、お金が平均Lv×300G以上
 // (d) 転職したばかりの仲間（Lv10未満）がいない
 // (e) 前列向きの仲間が減らない（3人いれば3人を保つ）、回復役1人が残り、罠を外せる仲間がいれば残る
 const SICK = ['dead', 'ash', 'stoned', 'paralyzed'];
@@ -384,7 +384,7 @@ export function classChangePlan(game) {
   const P = game.party;
   if (P.length < 6 || P.some(c => c.status !== 'ok')) return null;
   const avg = partyLevel(game);
-  // 一行に戻したい（平均Lvの8割以上の）仲間が、寺院に安置されたままなら見送る
+  // パーティに戻したい（平均Lvの8割以上の）仲間が、寺院に安置されたままなら見送る
   if (game.reserve.some(c => SICK.includes(c.status) && c.level >= avg * 0.8)) return null;
   if (game.gold < avg * 300) return null;
   if (P.some(c => c.history && c.history.length && c.level < 10)) return null;

@@ -200,7 +200,7 @@ function openSettings() {
   <select id="sComp">${options(COMPOSITIONS, s.composition)}</select>
   <button id="sClose">閉じる</button>
   <h3>やり直し</h3>
-  <p class="note">現在の冒険を破棄し、上の構成で新しい一行を作ります。</p>
+  <p class="note">現在の冒険を破棄し、上の構成で新しいパーティを作ります。</p>
   <button id="sNew" class="danger">新しい冒険を始める</button>`);
   const bind = (id, key) => { $(id).onchange = (e) => { game.settings[key] = e.target.value; save(); }; };
   bind('#sPolicy', 'policy'); bind('#sSpell', 'spellUse'); bind('#sChest', 'chest'); bind('#sComp', 'composition');

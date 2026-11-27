@@ -61,7 +61,7 @@ export function* battle(game, groups, opts = {}) {
   // 友好的な相手
   const g0 = groups[0].mon;
   if (!opts.boss && !opts.lair && groups.length === 1 && g0.type === 'human' && R.chance(0.12)) {
-    game.log(`${g0.name}たちは友好的なようだ。一行は立ち去った。`);
+    game.log(`${g0.name}たちは友好的なようだ。パーティは立ち去った。`);
     B.result = 'fled'; game.battle = null; yield 1; return B;
   }
 
@@ -124,7 +124,7 @@ export function* battle(game, groups, opts = {}) {
     B.groups = B.groups.filter(g => liveUnits(g).length > 0);
     if (!B.groups.length) B.result = 'win';
     else if (!party.some(c => canAct(c) || c.status === 'asleep')) B.result = 'wipe';
-    if (B.round > 60 && !B.result) { game.log('一行は戦いを切り上げて退いた。'); B.result = 'fled'; }
+    if (B.round > 60 && !B.result) { game.log('パーティは戦いを切り上げて退いた。'); B.result = 'fled'; }
   }
 
   for (const c of party) { if (c.status === 'asleep') c.status = 'ok'; c._silenced = false; c._acBuff = 0; }
@@ -198,7 +198,7 @@ function* partyAction(game, B, c, act) {
     case 'run': {
       if (B.noRun) { game.log('逃げられない！'); yield 1; return; }
       const avgAgi = party.filter(canAct).reduce((s, x) => s + x.stats.agi, 0) / Math.max(1, partyAble(party).length);
-      if (R.chance(0.45 + (avgAgi - 10) * 0.03)) { game.log('一行は逃げ出した！'); B.result = 'fled'; }
+      if (R.chance(0.45 + (avgAgi - 10) * 0.03)) { game.log('パーティは逃げ出した！'); B.result = 'fled'; }
       else game.log('逃げ出そうとしたが、回り込まれた！');
       yield 1; return;
     }
@@ -293,7 +293,7 @@ function* castSpell(game, B, c, sp, target) {
       yield 1; return;
     }
     case 'ac': {
-      if (sp.target === 'party') { B.partyAC += sp.amount; game.log(`一行の守りが固くなった（AC-${sp.amount}）。`); }
+      if (sp.target === 'party') { B.partyAC += sp.amount; game.log(`パーティの守りが固くなった（AC-${sp.amount}）。`); }
       else {
         const t = sp.target === 'self' ? c : target;
         if (t && isAlive(t)) { t._acBuff = (t._acBuff || 0) + sp.amount; game.log(`${t.name}の守りが固くなった（AC-${sp.amount}）。`); }
@@ -303,7 +303,7 @@ function* castSpell(game, B, c, sp, target) {
     case 'ward': {
       const add = Math.min(0.4, 0.25 + c.level * 0.01);
       B.ward = Math.min(0.75, (B.ward || 0) + add);
-      game.log(`一行は障壁に包まれた（呪文・ブレスを${Math.round(B.ward * 100)}%軽減）。`);
+      game.log(`パーティは障壁に包まれた（呪文・ブレスを${Math.round(B.ward * 100)}%軽減）。`);
       yield 1; return;
     }
     case 'unresist': {
@@ -379,7 +379,7 @@ function* castSpell(game, B, c, sp, target) {
     case 'heal': {
       if (sp.target === 'party') {
         for (const t of party) if (isAlive(t)) t.hp = Math.min(t.maxhp, t.hp + R.roll(sp.dice));
-        game.log('一行の傷が癒えた。');
+        game.log('パーティの傷が癒えた。');
       } else {
         const t = target && isAlive(target) ? target : null;
         if (t) { const h = R.roll(sp.dice); t.hp = Math.min(t.maxhp, t.hp + h); game.log(`${t.name}のHPが${h}回復した。`); }
@@ -516,7 +516,7 @@ export function damageParty(game, hits) {
   hits = hits.filter(([c]) => isAlive(c));
   if (!hits.length) return;
   const everyone = hits.length === game.party.filter(isAlive).length && hits.length > 1;
-  const who = everyone ? '一行は' : hits.length <= 2 ? hits.map(([c]) => c.name).join('と') + 'は' : `${hits.length}人が`;
+  const who = everyone ? 'パーティは' : hits.length <= 2 ? hits.map(([c]) => c.name).join('と') + 'は' : `${hits.length}人が`;
   game.log(`${who}${rangeStr(hits.map(([, d]) => d))}のダメージを受けた。`, 'hurt');
   for (const [c, d] of hits) damageChar(game, c, d, true);
 }
