@@ -39,6 +39,7 @@ function attach() {
   runner = game.run();
   game.onLog = (text, cls) => pendingLogs.push([text, cls]);
   game.onSave = () => save();
+  game.onVictory = () => { paused = true; updateSpeedLabel(); save(); openVictory(); };
   updateSpeedLabel();
 }
 
@@ -56,11 +57,11 @@ function frame(now) {
     if (sp.ms === 0) {
       // 最速：1フレームあたり最大40手（約2400手/秒）
       const t0 = performance.now();
-      for (let i = 0; i < 40 && performance.now() - t0 < 12; i++) step();
+      for (let i = 0; i < 40 && performance.now() - t0 < 12 && !paused; i++) step();
     } else {
       acc += dt;
       let guard = 0;
-      while (acc >= sp.ms * Math.max(1, wait) && guard++ < 50) { acc -= sp.ms * Math.max(1, wait); wait = 0; wait = step(); }
+      while (!paused && acc >= sp.ms * Math.max(1, wait) && guard++ < 50) { acc -= sp.ms * Math.max(1, wait); wait = 0; wait = step(); }
     }
   }
   if (Date.now() - lastSave > 20000) { lastSave = Date.now(); save(); }
@@ -233,12 +234,33 @@ function openInfo() {
   <tr><td>失われた仲間</td><td>${st.deaths}人</td></tr>
   <tr><td>経過週</td><td>${st.weeks}週</td></tr>
   <tr><td>プレイ開始から</td><td>${fmtTime(Date.now() - st.startedAt)}</td></tr>
-  <tr><td>迷宮制覇</td><td>${game.cleared ? '達成！' : 'まだ'}</td></tr>
+  <tr><td>迷宮制覇</td><td>${game.cleared ? `達成！（ザル=ガドラ撃破${st.bossKills || 1}回）` : 'まだ'}</td></tr>
   </table>
   <h3>持ち物（共有の袋）</h3><div>${bag}</div>
   <h3>控えの冒険者</h3><div>${reserve}</div>
   <button id="iClose">閉じる</button>`);
   $('#iClose').onclick = closeModal;
+}
+
+// 迷宮制覇：進行を止めて、記録を表示する
+function openVictory() {
+  const st = game.stats;
+  const members = game.party.map(c => `<tr><td>${c.name}</td><td>${ALIGN_NAMES[c.align][0]}-${RACES[c.race].name[0]}-${CLASSES[c.cls].ab}(${(c.history ? c.history.length : 0) + 1})</td><td>Lv${c.level}</td></tr>`).join('');
+  openModal(`<h2>★ 迷宮制覇 ★</h2>
+  <p>深淵の主ザル=ガドラは倒れ、迷宮を覆っていた瘴気は晴れた。</p>
+  <table>
+  <tr><td>プレイ時間</td><td>${fmtTime((st.clearedAt || Date.now()) - st.startedAt)}</td></tr>
+  <tr><td>迷宮での経過週</td><td>${st.weeks}週</td></tr>
+  <tr><td>迷宮への出発</td><td>${st.trips}回</td></tr>
+  <tr><td>戦闘勝利</td><td>${st.battles}回</td></tr>
+  <tr><td>全滅</td><td>${st.wipes}回</td></tr>
+  <tr><td>失われた仲間</td><td>${st.deaths}人</td></tr>
+  </table>
+  <h3>制覇したパーティ</h3>
+  <table>${members}</table>
+  <p class="note">このあとも冒険は続きます。ザル=ガドラには、町に戻るたびに何度でも挑めます。</p>
+  <button id="vClose">冒険を続ける</button>`);
+  $('#vClose').onclick = () => { closeModal(); paused = false; updateSpeedLabel(); };
 }
 
 function openChar(c) {

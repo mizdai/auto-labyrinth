@@ -121,6 +121,7 @@ export class Game {
     this.townState = '城下町';
     this.dungeonWard = 0;   // 迷宮にいるあいだ続く障壁・守りは、地上に戻ると消える
     this.dungeonAC = 0;
+    this.bossBeaten = false;   // ラスボスは1回の探索につき1度まで（制覇後も、町に戻ればまた戦える）
     this.battle = null;
     this.log('―― 城下町 ――', 'sys');
     for (const c of this.party) c.poison = false;
@@ -503,7 +504,7 @@ export class Game {
         if (!known[y * W + x]) return false;
         const lid = this.lairIdAt(F, x, y);
         if (lid !== null && !this.lairsCleared.includes(lid) && (weak || this.lairsFled.includes(lid))) return true;
-        return c.type === 'pit' || c.type === 'teleport' || c.type === 'alarm' || (avoidBoss && c.type === 'boss' && !this.cleared);
+        return c.type === 'pit' || c.type === 'teleport' || c.type === 'alarm' || (avoidBoss && c.type === 'boss' && !this.bossBeaten);
       };
       let path = findPath(F, known, this.x, this.y, goal, avoid, this.dir);
       if (!path || !path.length) {
@@ -623,7 +624,7 @@ export class Game {
           this.lairsFled.push(enteredLair);
           this.log('この玄室は避けて進もう。', 'sys');
         }
-      } else if (cell.type === 'boss' && !this.cleared) {
+      } else if (cell.type === 'boss' && !this.bossBeaten) {
         this.log('禍々しい気配が満ちている…。', 'bad');
         yield 2;
         this.log('「よくぞここまで来た。だがお前たちの旅はここで終わる」', 'bad');
@@ -733,7 +734,7 @@ export class Game {
       return { goal: (x, y) => x === F.down.x && y === F.down.y, label: 'down', avoidBoss: true };
     }
     // ボス
-    const bossReady = this.floor === MAX_FLOOR && !this.cleared && partyLevel(this) >= recommendedLevel(MAX_FLOOR) + 2 + policy(this).levelMargin && partyCondition(this).hp > 0.9;
+    const bossReady = this.floor === MAX_FLOOR && !this.bossBeaten && partyLevel(this) >= recommendedLevel(MAX_FLOOR) + 2 + policy(this).levelMargin && partyCondition(this).hp > 0.9;
     if (bossReady && F.boss && isKnown(F.boss.x, F.boss.y)) return { goal: (x, y) => x === F.boss.x && y === F.boss.y, label: 'boss', avoidBoss: false };
     // 未踏の区画
     const unexplored = (x, y) => !isKnown(x, y);
@@ -990,6 +991,18 @@ export class Game {
   }
 
   *victory() {
+    this.bossBeaten = true;
+    this.stats.bossKills = (this.stats.bossKills || 0) + 1;
+    if (this.cleared) {
+      // 制覇後の再戦
+      this.log(`深淵の主ザル=ガドラを再び打ち倒した！（${this.stats.bossKills}回目）`, 'good');
+      yield 2;
+      this.gold += 10000;
+      this.log('城下町から10000Gが贈られた。', 'sys');
+      yield 2;
+      this.mode = 'return';
+      return;
+    }
     this.cleared = true;
     this.stats.clearedAt = Date.now();
     this.log('深淵の主ザル=ガドラは崩れ落ちた！', 'good');
@@ -1002,6 +1015,7 @@ export class Game {
     this.gold += 50000;
     this.log('城下町から褒賞として50000Gが贈られた。冒険はまだ続く…。', 'sys');
     yield 2;
+    if (this.onVictory) this.onVictory();
     this.mode = 'return';
   }
 }
