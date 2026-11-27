@@ -65,22 +65,33 @@ export function allocate(race, cls, bonus) {
 // 能力値が余ったときに見据える、将来の転職先
 const FUTURE_CLASS = { mage: 'lord', priest: 'samurai', samurai: 'lord', fighter: 'samurai' };
 
-const RACE_FOR = {
-  fighter: ['dwarf', 'human'], mage: ['elf', 'human', 'gnome'], priest: ['gnome', 'dwarf', 'elf'],
-  thief: ['halfling', 'gnome'], bishop: ['elf', 'gnome'], samurai: ['dwarf', 'human'],
-  lord: ['dwarf', 'human'], ninja: ['human', 'dwarf'],
+// 職業ごとの種族の出やすさ（重み）。向いている種族が多いが、どの種族もまれに出る
+const RACE_WEIGHT = {
+  fighter: { dwarf: 4, human: 3, gnome: 1, elf: 1, halfling: 0.4 },
+  mage:    { elf: 4, human: 3, gnome: 2, halfling: 1, dwarf: 0.4 },
+  priest:  { gnome: 4, dwarf: 3, elf: 2, human: 1.5, halfling: 0.4 },
+  thief:   { halfling: 4, human: 2, gnome: 2, elf: 1.5, dwarf: 0.4 },
+  bishop:  { elf: 3, gnome: 3, human: 1.5, dwarf: 1, halfling: 0.4 },
+  samurai: { dwarf: 3, human: 3, elf: 1, gnome: 1, halfling: 0.3 },
+  lord:    { dwarf: 3, human: 3, gnome: 1, elf: 1, halfling: 0.3 },
+  ninja:   { human: 3, dwarf: 2, elf: 1.5, gnome: 1, halfling: 1 },
 };
+function pickRace(cls) {
+  const w = Object.entries(RACE_WEIGHT[cls]);
+  let r = R.next() * w.reduce((t, [, v]) => t + v, 0);
+  for (const [race, v] of w) { if ((r -= v) < 0) return race; }
+  return w[0][0];
+}
 
 // 職業 cls のキャラを作成。上位職は振り直しを繰り返し、だめなら fallback 職
 export function createCharacter(cls, opts = {}) {
   const { align = null, fallback = null, tries = 150, used = new Set() } = opts;
-  const races = RACE_FOR[cls];
   let stats = null, race = null, target = cls;
   for (let t = 0; t < tries && !stats; t++) {
-    race = R.pick(races);
+    race = pickRace(cls);
     stats = allocate(race, cls, rollBonus());
   }
-  if (!stats && fallback) { target = fallback; race = R.pick(RACE_FOR[fallback]); stats = allocate(race, fallback, 30) || { ...RACES[race].base }; }
+  if (!stats && fallback) { target = fallback; race = pickRace(fallback); stats = allocate(race, fallback, 30) || { ...RACES[race].base }; }
   if (!stats) { stats = allocate(race, cls, 40) || { ...RACES[race].base }; }
   const c = CLASSES[target];
   let al = align && c.align.includes(align) ? align : (c.align.includes('G') ? 'G' : c.align[0]);
