@@ -624,7 +624,8 @@ export class Game {
       if (res) {
         sinceBattle = 0;
         if (res.result === 'wipe') { yield* this.wipe(); return; }
-        if (res.result === 'fled') { this.x = px; this.y = py; this.dir = (d + 2) % 4; yield 1; }
+        // 逃げたら1歩前のマスに戻る（向きはそのまま）
+        if (res.result === 'fled') { this.x = px; this.y = py; yield 1; }
         if (res.result === 'win') {
           this.sortParty();
           if (res.lair || res.boss || R.chance(0.3)) yield* this.chest(!!res.lair || !!res.boss);
