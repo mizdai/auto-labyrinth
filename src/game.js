@@ -142,6 +142,7 @@ export class Game {
     this.location = 'dungeon'; this.floor = 1;
     this.x = getFloor(this.seed, 1).up.x; this.y = getFloor(this.seed, 1).up.y; this.dir = 0;
     this.mode = 'explore'; this.lairsCleared = []; this.lairsFled = [];
+    this.bagFullAtStart = this.bag.length >= 24;
     this.knownMap()[this.y * W + this.x] = 1;
     yield 2;
   }

@@ -281,6 +281,10 @@ export function shouldReturn(game) {
   if (!healAvail && game.party.some(x => isAlive(x) && x.hp < x.maxhp * 0.35)) return '瀕死の仲間がいる';
   if (c.hasHealer && c.healMP < 0.15 && c.hp < 0.8) return '回復の呪文が尽きた';
   if (c.mageMP < 0.1 && game.floor >= 3 && c.hp < 0.9) return '呪文が尽きた';
+  // 回復も攻撃も呪文がほぼ空なら、階やHPに関係なく戻る（呪文は宿屋でしか戻らない）
+  if (c.hasHealer && c.healMP < 0.15 && c.mageMP < 0.15) return '呪文が尽きた';
+  // 袋がいっぱいで、未鑑定の品を抱えているなら、売りに戻る（町を出たときすでにいっぱいだった場合は、戻っても片付かないので戻らない）
+  if (game.bag.length >= 24 && !game.bagFullAtStart && game.bag.some(e => !e.identified)) return '持ち物がいっぱい';
   if (game.party.some(x => x.poison) && !game.party.some(x => canCast(x, SPELL_BY_ID.gedoku)) && !game.bag.some(e => e.identified && ITEMS[e.id].use === 'cure')) return '毒を治すため';
   // レベル上げ：宿屋で上がるはずのレベルがたまっていたら戻る
   {
