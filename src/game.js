@@ -297,7 +297,7 @@ export class Game {
     const plan = classChangePlan(this);
     if (!plan) return;
     this.townState = '訓練場';
-    const { c, cls } = plan;
+    const { c, cls, bench } = plan;
     const lv = c.level;
     const { from, removed } = changeClass(c, cls);
     this.log(`訓練場で、${c.name}（Lv${lv}）が${CLASSES[from].name}から${CLASSES[cls].name}に転職した！`, 'good');
@@ -305,6 +305,13 @@ export class Game {
     for (const e of removed) this.bag.push(e);
     if (removed.length) this.log(`${removed.map(e => itemName(e)).join('、')}は装備できなくなり、袋にしまった。`);
     yield 2;
+    if (bench) {
+      this.party.splice(this.party.indexOf(bench), 1);
+      this.reserve.push(bench);
+      this.log(`${bench.name}（司教）は控えに回った。`);
+      yield 1;
+      yield* this.fillParty();
+    }
   }
 
   goldReserve() { return Math.round(TEMPLE_COST.dead * partyLevel(this) * 1.2); }

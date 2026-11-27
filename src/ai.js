@@ -380,6 +380,7 @@ export function campPlan(game, hurtBelow = 0.8) {
 // (e) 前列向きの仲間が減らない（3人いれば3人を保つ）、回復役1人が残り、罠を外せる仲間がいれば残る
 const SICK = ['dead', 'ash', 'stoned', 'paralyzed'];
 const FRONT_CLASSES = ['fighter', 'samurai', 'lord', 'ninja'];
+export const CC_RULES = { bishopSwap: true };
 export function classChangePlan(game) {
   const P = game.party;
   if (P.length < 6 || P.some(c => c.status !== 'ok')) return null;
@@ -412,15 +413,27 @@ export function classChangePlan(game) {
       if (v >= 2) cands.push({ c, cls: to, v });
     }
   }
+  // 魔術と僧侶の呪文を両方覚えた仲間がいて、司教がまだ両方を覚えきっていなければ、
+  // その仲間を司教にして、今の司教は控えに回す
+  if (CC_RULES.bishopSwap) {
+    const knowsAll = (x) => SPELLS.every(s => knowsSpell(x, s));
+    const halfBishop = P.filter(x => x.cls === 'bishop' && !knowsAll(x)).sort((a, b) => a.level - b.level)[0];
+    if (halfBishop) for (const c of P) {
+      if (c.cls === 'bishop' || (c.history || []).includes('bishop') || !knowsAll(c)) continue;
+      if (!meetsReq(c.stats, 'bishop') || !CLASSES.bishop.align.includes(c.align)) continue;
+      cands.push({ c, cls: 'bishop', v: 4, bench: halfBishop });
+    }
+  }
   cands.sort((a, b) => b.v - a.v || b.c.level - a.c.level);
-  for (const { c, cls } of cands) {
+  for (const { c, cls, bench } of cands) {
     const after = (x) => (x === c ? { ...x, cls } : x);
+    const P = game.party.filter(x => x !== bench);
     const front = P.filter(x => roleOf(after(x)) === 'front').length;
     const healer = P.some(x => x === c ? (CLASSES[cls].spells.priest || maxSlots(c).priest.some(v => v > 0)) : maxSlots(x).priest.some(v => v > 0));
     const trap = P.some(x => ['thief', 'ninja'].includes(after(x).cls));
     const frontBefore = P.filter(x => roleOf(x) === 'front').length;
     const trapBefore = P.some(x => ['thief', 'ninja'].includes(x.cls));
-    if (front >= Math.min(3, frontBefore) && healer && (trap || !trapBefore)) return { c, cls };
+    if (front >= Math.min(3, frontBefore) && healer && (trap || !trapBefore)) return { c, cls, bench };
   }
   return null;
 }
