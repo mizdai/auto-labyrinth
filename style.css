@@ -21,7 +21,7 @@ body { overscroll-behavior: none; }
 #party td, #party th { padding: 2px 3px; }
 #party tr.dead td { color: #ff7070; } #party tr.bad td { color: #ffb060; }
 #party td.hp, #party td.mp { white-space: nowrap; }
-#party tr td.ok { color: #7fd87f; } #party tr td.mid { color: #e8d060; } #party tr td.low { color: #ff6b6b; }
+#party tr td.ok { color: #fff; } #party tr td.mid { color: #e8d060; } #party tr td.low { color: #ff6b6b; }
 #party tr.dead td.hp, #party tr.dead td.mp { color: #ff7070; }
 #party tbody tr { cursor: pointer; }
 #modal { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 10; }
