@@ -25,6 +25,8 @@ body { overscroll-behavior: none; }
 #party td, #party th { padding: 2px 3px; }
 #party tr.dead td { color: #ff7070; } #party tr.bad td { color: #ffb060; }
 #party td.hp, #party td.mp { white-space: nowrap; }
+#party td:nth-child(n+3):nth-child(-n+6) { text-align: right; }
+#party td:nth-child(7), #party th:nth-child(7) { padding-left: 8px; }
 #party tr td.ok { color: #fff; } #party tr td.mid { color: #e8d060; } #party tr td.low { color: #ff6b6b; }
 #party tr.dead td.hp, #party tr.dead td.mp { color: #ff7070; }
 #party tbody tr { cursor: pointer; }
