@@ -40,19 +40,30 @@ export function allocate(race, cls, bonus) {
   const st = { ...base };
   for (const k of STATS) st[k] = Math.max(st[k], req[k] || 0);
   let rest = bonus - need;
-  const prio = CLASSES[cls].prio;
-  let guard = 0;
-  while (rest > 0 && guard++ < 200) {
-    const k = prio[guard % prio.length];
-    if (st[k] < 18) { st[k]++; rest--; }
-    else if (prio.every(p => st[p] >= 18)) {
-      const any = STATS.find(s => st[s] < 18);
-      if (!any) break;
-      st[any]++; rest--;
+  // 残りの振り方：
+  // 1. 職業の優先する能力値を、順番に1点ずつ15まで（15あれば十分。18まではレベルアップで伸びる）
+  // 2. 将来の転職先（魔術師→君主、僧侶→侍など）の条件に届くまで
+  // 3. まだ余れば、優先する能力値を18まで、それでも余れば残りの能力値へ
+  const raise = (keys, cap) => {
+    let moved = true;
+    while (rest > 0 && moved) {
+      moved = false;
+      for (const k of keys) if (rest > 0 && st[k] < cap) { st[k]++; rest--; moved = true; }
     }
+  };
+  const prio = CLASSES[cls].prio;
+  raise(prio, 15);
+  const future = FUTURE_CLASS[cls];
+  if (future) {
+    const freq = CLASSES[future].req;
+    for (const k of STATS) while (rest > 0 && freq[k] && st[k] < freq[k]) { st[k]++; rest--; }
   }
+  raise(prio, 18);
+  raise(STATS, 18);
   return st;
 }
+// 能力値が余ったときに見据える、将来の転職先
+const FUTURE_CLASS = { mage: 'lord', priest: 'samurai', samurai: 'lord', fighter: 'samurai' };
 
 const RACE_FOR = {
   fighter: ['dwarf', 'human'], mage: ['elf', 'human', 'gnome'], priest: ['gnome', 'dwarf', 'elf'],

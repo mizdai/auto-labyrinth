@@ -21,7 +21,7 @@ export const CLASSES = {
   priest:  { name: '僧侶',   ab: '僧', key: 'P', req: { pie: 11 }, align: 'GE', hd: 8, hitBase: 1, hitDiv: 4, atkDiv: 0, maxAtk: 1, exp: 1050, spells: { priest: [1, 2] }, prio: ['pie', 'vit', 'agi'] },
   thief:   { name: '盗賊',   ab: '盗', key: 'T', req: { agi: 11 }, align: 'NE', hd: 6, hitBase: 1, hitDiv: 4, atkDiv: 0, maxAtk: 1, exp: 900, spells: {}, prio: ['agi', 'luk', 'vit'] },
   bishop:  { name: '司教',   ab: '司', key: 'B', req: { iq: 12, pie: 12 }, align: 'GE', hd: 6, hitBase: 0, hitDiv: 5, atkDiv: 0, maxAtk: 1, exp: 1250, spells: { mage: [1, 4], priest: [4, 4] }, prio: ['iq', 'pie', 'vit'] },
-  samurai: { name: '侍',     ab: '侍', key: 'S', req: { str: 15, iq: 11, pie: 10, vit: 14, agi: 10 }, align: 'GN', hd: 12, hitBase: 2, hitDiv: 3, atkDiv: 5, maxAtk: 4, exp: 1300, spells: { mage: [4, 3] }, prio: ['str', 'vit', 'agi'] },
+  samurai: { name: '侍',     ab: '侍', key: 'S', req: { str: 15, iq: 11, pie: 10, vit: 14, agi: 10 }, align: 'GN', hd: 12, hitBase: 2, hitDiv: 3, atkDiv: 5, maxAtk: 4, exp: 1300, spells: { mage: [4, 3] }, prio: ['str', 'vit', 'agi', 'luk'] },
   lord:    { name: '君主',   ab: '君', key: 'L', req: { str: 15, iq: 12, pie: 12, vit: 15, agi: 14, luk: 15 }, align: 'G', hd: 10, hitBase: 2, hitDiv: 3, atkDiv: 5, maxAtk: 4, exp: 1350, spells: { priest: [4, 3] }, prio: ['str', 'vit', 'pie'] },
   ninja:   { name: '忍者',   ab: '忍', key: 'N', req: { str: 17, iq: 17, pie: 17, vit: 17, agi: 17, luk: 17 }, align: 'E', hd: 7, hitBase: 2, hitDiv: 3, atkDiv: 4, maxAtk: 5, exp: 1450, spells: {}, prio: ['agi', 'str', 'luk'] },
 };

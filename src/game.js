@@ -1,10 +1,10 @@
 // ゲーム全体の状態と進行（AIによる自動進行）
 import { R } from './rng.js';
-import { CLASSES, SPELL_BY_ID, INN_ROOMS, TEMPLE_COST } from './data.js';
+import { CLASSES, SPELLS, SPELL_BY_ID, INN_ROOMS, TEMPLE_COST } from './data.js';
 import { ITEMS, SLOTS, SHOP_BASE, itemName } from './items.js';
 import {
   createCharacter, isAlive, canAct, restoreMP, tryLevelUp, itemScore, canEquip,
-  canCast, roleOf, getNextId, setNextId, maxSlots, charAC, changeClass, charValue,
+  canCast, roleOf, getNextId, setNextId, maxSlots, charAC, changeClass, charValue, knowsSpell,
 } from './character.js';
 import { getFloor, findPath, W, H, DX, DY, DIR_NAMES, MAX_FLOOR, MAP_VERSION, THEMES, OPEN } from './dungeon.js';
 import { battle, makeEncounter, bossEncounter, damageChar, damageParty } from './combat.js';
@@ -172,7 +172,11 @@ export class Game {
     // 復帰した控えを戦力として戻す
     // 有用さ（レベル・転職前の呪文・HP）で比べる。転職して育て直し中（Lv10未満）の仲間は外さない
     const retraining = (p) => p.history && p.history.length && p.level < 10;
+    // 呪文を全部覚えた司教がパーティにいるあいだは、覚えきっていない司教は戻さない（覚えきった司教なら2人でもよい）
+    const knowsAll = (x) => SPELLS.every(s => knowsSpell(x, s));
+    const fullBishop = () => this.party.some(p => p.cls === 'bishop' && knowsAll(p));
     for (const r of this.reserve.filter(c => c.status === 'ok').sort((a, b) => charValue(b) - charValue(a))) {
+      if (r.cls === 'bishop' && !knowsAll(r) && fullBishop()) continue;
       const weaker = this.party.filter(p => !retraining(p) && charValue(p) < charValue(r) - 1 && (p.cls === r.cls || roleOf(p) === roleOf(r))).sort((a, b) => (a.cls === r.cls ? -1 : 0) - (b.cls === r.cls ? -1 : 0) || charValue(a) - charValue(b))[0];
       if (weaker) {
         this.party[this.party.indexOf(weaker)] = r;
