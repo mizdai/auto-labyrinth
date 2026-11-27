@@ -21,8 +21,6 @@ body { overscroll-behavior: none; }
 #party col.c-name { width: 25%; } #party col.c-cls { width: 20%; } #party col.c-lv { width: 7%; } #party col.c-ac { width: 8%; }
 #party col.c-hp { width: 17%; } #party col.c-mp { width: 11%; } #party col.c-st { width: 12%; }
 #party td { white-space: nowrap; overflow: hidden; text-overflow: clip; }
-#party td:nth-child(n+3):nth-child(-n+6), #party th:nth-child(n+3):nth-child(-n+6) { text-align: right; }
-#party td:nth-child(7), #party th:nth-child(7) { padding-left: 8px; }
 #party th { font-weight: normal; color: #8899aa; font-size: 13px; text-align: left; white-space: nowrap; }
 #party td, #party th { padding: 2px 3px; }
 #party tr.dead td { color: #ff7070; } #party tr.bad td { color: #ffb060; }
