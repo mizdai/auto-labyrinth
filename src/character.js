@@ -26,9 +26,8 @@ function makePart(n) {
     s += syl;
     if (i < n - 1 && R.chance(0.12)) s += 'ー';
   }
-  let end = R.pick(NAME_ENDINGS);
-  // 音が1つだけのときは、語尾を必ず付ける（2文字以上にする）
-  while (s.length + end.length < 2) end = R.pick(NAME_ENDINGS);
+  // 語尾は約45%で付ける。音が1つだけで1文字のときは、必ず付ける（2文字以上にする）
+  let end = R.chance(0.45) || s.length < 2 ? R.pick(NAME_ENDINGS) : '';
   if (!(s.endsWith('ー') && /^[ーッ]/.test(end))) s += end;
   return s;
 }
