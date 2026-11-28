@@ -129,6 +129,12 @@ export class Game {
     yield* this.temple();
     yield* this.fillParty();
     yield* this.inn();
+    // レベルアップで老衰により亡くなった仲間がいれば、パーティから外して補充する
+    if (this.party.some(c => c.status === 'lost')) {
+      this.stats.deaths += this.party.filter(c => c.status === 'lost').length;
+      this.party = this.party.filter(c => c.status !== 'lost');
+      yield* this.fillParty();
+    }
     yield* this.training();
     yield* this.identify();
     yield* this.shop();
@@ -268,7 +274,7 @@ export class Game {
     // まずは大部屋で休み呪文を回復、僧侶の呪文で傷を癒やす
     for (let cycle = 0; cycle < 12; cycle++) {
       this.restWeek(INN_ROOMS[0]);
-      for (const c of this.party) for (const m of tryLevelUp(c)) { this.log(m, 'good'); yield 1; }
+      for (const c of this.party) for (const m of tryLevelUp(c)) { this.log(m, m.includes('老衰') ? 'bad' : 'good'); yield 1; }
       let casts = 0;
       for (let k = 0; k < 30; k++) {
         const plan = campPlan(this);
@@ -294,7 +300,7 @@ export class Game {
       weeks++;
     }
     if (weeks) { this.log(`宿屋で${weeks}週間休んだ。`); yield 1; }
-    for (const c of this.party) for (const m of tryLevelUp(c)) { this.log(m, 'good'); yield 1; }
+    for (const c of this.party) for (const m of tryLevelUp(c)) { this.log(m, m.includes('老衰') ? 'bad' : 'good'); yield 1; }
     for (const c of this.party) restoreMP(c);
   }
   restWeek(room) {

@@ -321,12 +321,14 @@ export function tryLevelUp(c) {
     const hpBefore = c.maxhp;
     c.level++;
     const statChanges = [];
+    // 能力値の増減（初代の仕様が基準）：能力値ごとに独立して判定する。
+    // 25%で変化なし。残りは0〜129の乱数が満年齢未満なら−1、以上なら+1（若いほど上がりやすい）。
+    // 上限18より上には上がらないが、上限でも下がる判定はふつうに行う。1未満にはならない
     for (const k of STATS) {
-      const r = R.next();
-      const downP = c.age >= 40 ? 0.15 : 0.04;
+      if (R.chance(0.25)) continue;
       const old = c.stats[k];
-      if (r < 0.28 && c.stats[k] < 18) c.stats[k]++;
-      else if (r > 1 - downP && c.stats[k] > 3) c.stats[k]--;
+      if (R.int(130) < c.age) c.stats[k] = Math.max(1, c.stats[k] - 1);
+      else c.stats[k] = Math.min(18, c.stats[k] + 1);
       if (c.stats[k] !== old) statChanges.push(`${STAT_NAMES[k]} ${old}→${c.stats[k]}`);
     }
     // HP：全レベル分を振り直し、今の最大HPより高ければその値に、届かなければ1だけ増える
@@ -340,6 +342,12 @@ export function tryLevelUp(c) {
     msgs.push(`${c.name}はレベル${c.level}に上がった！`);
     msgs.push(changes.join('　'));
     if (learned.length) msgs.push(`${learned.join('、')}の呪文を覚えた！`);
+    // 生命力が2以下になったら老衰で亡くなる（蘇生できない）
+    if (c.stats.vit <= 2) {
+      c.status = 'lost'; c.hp = 0;
+      msgs.push(`${c.name}は老いて力尽きた…（老衰）`);
+      break;
+    }
   }
   return msgs;
 }
