@@ -354,6 +354,22 @@ function* castSpell(game, B, c, sp, target) {
       game.log(n ? `${g.mon.name}${n > 1 ? n + '体' : ''}の命を奪った。` : `${g.mon.name}には効かなかった。`);
       yield 1; return;
     }
+    case 'chaos': {
+      // 敵1体ごとに、眠り・麻痺・呪文封じ・恐怖・石化のどれかをランダムにかける（ボスには効かない）
+      const counts = { 眠った: 0, 麻痺した: 0, 呪文を封じられた: 0, 怯えた: 0, 石になった: 0 };
+      for (const g of liveGroups(B)) for (const u of liveUnits(g)) {
+        if (g.mon.flags.boss || isResisted(B, g) || !R.chance(0.8 - g.mon.lv * 0.02)) continue;
+        const r = R.next();
+        if (r < 0.25) { if (g.mon.flags.noSleep) continue; u.asleep = R.range(2, 4); counts.眠った++; }
+        else if (r < 0.45) { u.paralyzed = true; counts.麻痺した++; }
+        else if (r < 0.7) { u.silenced = true; counts.呪文を封じられた++; }
+        else if (r < 0.92) { u.afraid = R.range(2, 3); counts.怯えた++; }
+        else { onKillQuiet(B, g, u, c); counts.石になった++; }
+      }
+      const parts = Object.entries(counts).filter(([, n]) => n).map(([k, n]) => `${n}体が${k}`);
+      game.log(parts.length ? `魔物たちの心と体が乱れた。${parts.join('、')}。` : '魔物たちには効かなかった。');
+      yield 1; return;
+    }
     case 'deathAll': {
       let n = 0, total = 0;
       for (const g of liveGroups(B)) for (const u of liveUnits(g)) {

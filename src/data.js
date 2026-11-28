@@ -54,7 +54,7 @@ export const SPELLS = [
   { id: 'joubutsu', name: 'ジョウブツ', school: 'mage', lv: 6, target: 'enemy', effect: 'damage', dice: [10, 100, 0], only: 'undead', combat: true, desc: '不死の敵1体を消し去る' },
   { id: 'teni',     name: 'テンイ',   school: 'mage', lv: 6, target: 'none', effect: 'return', camp: true, desc: '城下町へ転移する' },
   { id: 'shinokaze', name: 'シノカゼ', school: 'mage', lv: 7, target: 'all', effect: 'deathAll', combat: true, desc: '敵全体を即死させる（成功率30%、効かなかった敵は無傷）' },
-  { id: 'kago',     name: 'カゴ',     school: 'mage', lv: 7, target: 'none', effect: 'wardLong', camp: true, desc: '迷宮にいるあいだ続く障壁を張る（呪文・ブレスを軽減）' },
+  { id: 'midare',   name: 'ミダレ',   school: 'mage', lv: 7, target: 'all', effect: 'chaos', combat: true, desc: '敵全体に、眠り・麻痺・呪文封じ・恐怖・石化のどれかをランダムにかける' },
   { id: 'metsubou', name: 'メツボウ', school: 'mage', lv: 7, target: 'all', effect: 'damage', dice: [10, 10, 0], combat: true, desc: '敵全体を滅ぼす光' },
   // 僧侶系
   { id: 'iyashi',   name: 'イヤシ',   school: 'priest', lv: 1, target: 'ally', effect: 'heal', dice: [1, 8, 0], combat: true, camp: true, desc: '味方1人のHPを回復' },

@@ -143,6 +143,11 @@ function chooseActionsInner(game, B) {
       if (!B.boss && unitCount >= 5 && (allTooWeak || unitCount >= 7) && usable(c, SPELL_BY_ID.shinokaze)) {
         acts.set(c, { type: 'spell', spell: 'shinokaze' }); return;
       }
+      // 手ごわい群れが多いときは、序盤に敵全体を乱す（ボス本体には効かないので、ボス戦では取り巻きがいるときだけ）
+      const chaosTargets = groups.filter(g => !g.mon.flags.boss).reduce((t, g) => t + liveUnits(g).length, 0);
+      if (B.round <= 2 && chaosTargets >= 4 && dg > spellBar * 1.2 && !groupSpellsCast.has('chaos') && usable(c, SPELL_BY_ID.midare)) {
+        acts.set(c, { type: 'spell', spell: 'midare' }); groupSpellsCast.add('chaos'); return;
+      }
       if (allTooWeak && groups.length >= 2 && B.round <= 2 && usable(c, SPELL_BY_ID.osore) && groups.some(g => !(g.acMod > 0))) {
         acts.set(c, { type: 'spell', spell: 'osore' }); for (const g of groups) groupSpellsCast.add(g); return;
       }

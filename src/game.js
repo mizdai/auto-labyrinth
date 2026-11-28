@@ -451,12 +451,6 @@ export class Game {
         if (did) continue;
       }
 
-      // 迷宮にいるあいだ続く障壁：地下4階以上で、魔術Lv7の回数に余裕があれば張る
-      if (!this.dungeonWard && this.floor >= 4 && this.mode !== 'return') {
-        const caster = this.party.find(c => canCast(c, SPELL_BY_ID.kago) && c.mp.mage[6] >= 2);
-        if (caster) { this.applyCampSpell(caster, SPELL_BY_ID.kago, null); yield 1; }
-      }
-
       // 迷宮にいるあいだ続く守り：地下2階以上で、僧侶Lv4の回数に余裕があれば唱える
       if (!this.dungeonAC && this.floor >= 2 && this.mode !== 'return') {
         const caster = this.party.find(c => canCast(c, SPELL_BY_ID.matoi) && c.mp.priest[3] >= 3);
