@@ -105,7 +105,7 @@ function updateCam(now) {
 let lastPartyHtml = '';
 function render() {
   const rect = view.getBoundingClientRect();
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
   const w = Math.round(rect.width * dpr), h = Math.round(rect.height * dpr);
   if (view.width !== w || view.height !== h) { view.width = w; view.height = h; }
   // 戦闘中（戦闘後の宝箱を開けてアイテムを得るまで）は、上段の横幅いっぱいの戦闘画面（地図と情報は隠す）

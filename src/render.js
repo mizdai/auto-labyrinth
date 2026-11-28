@@ -308,8 +308,9 @@ export function battleScale(h) { return Math.max(1, Math.floor(h * BATTLE_CANVAS
 function battleLayout(w, h, dpr) {
   const fp = Math.round(13 * dpr);
   const pad = Math.round(fp * 0.7);
-  // 名前の欄は最大4グループ分の高さで固定（敵の数で絵の大きさや位置が変わらないように）
-  const top = pad + fp * (1 + 3 * 1.45) + fp * 0.4;
+  // 絵の上端は、名前3行分の下で固定（敵の数で絵の大きさや位置が変わらないように）。
+  // 4グループ目の名前は絵の上に重ねて書く
+  const top = pad + fp * (1 + 2 * 1.45) + fp * 0.4;
   // 絵：2体を横に並べられる、できるだけ大きい整数倍率（絵の左右の余白は重なってよい）。敵の数によらず一定
   const scale = Math.max(1, Math.min(Math.floor((h - top - pad * 0.5) / SPRITE_PX), Math.floor(w / 2 / (SPRITE_PX * 0.82))));
   const size = SPRITE_PX * scale;
@@ -324,17 +325,6 @@ export function drawBattle(ctx, game, w, h, dpr = 1) {
   if (!groups.length) return;
   const L = battleLayout(w, h, dpr);
   const { fp, pad, scale, size, bottom } = L;
-  // 上：グループごとに「数　名前　（動ける数）」を左寄せで（先頭グループを強調）
-  ctx.font = `${fp}px sans-serif`;
-  groups.slice(0, 4).forEach((g, i) => {
-    const live = g.units.filter(u => u.hp > 0);
-    const able = live.filter(u => !(u.asleep > 0) && !u.paralyzed).length;
-    const y = pad + fp * (1 + i * 1.45);
-    ctx.fillStyle = i === 0 ? '#ffd070' : '#d8e0e8';
-    ctx.textAlign = 'right'; ctx.fillText(String(live.length), pad + fp * 1.1, y);
-    ctx.textAlign = 'left'; ctx.fillText(g.mon.name, pad + fp * 1.6, y);
-    ctx.textAlign = 'right'; ctx.fillText(`（${able}）`, w - pad, y);
-  });
   // 下：先頭から2グループまでの絵を横に並べる
   const shown = groups.slice(0, 2);
   shown.forEach((g, i) => {
@@ -350,6 +340,19 @@ export function drawBattle(ctx, game, w, h, dpr = 1) {
     } else {
       drawMonster(ctx, g.mon, cx, bottom - size / 2, size * 0.8);
     }
+  });
+  // 上：グループごとに「数　名前　（動ける数）」を左寄せで（先頭グループを強調）。絵に重なっても読めるよう縁取りする
+  ctx.font = `${fp}px sans-serif`;
+  ctx.lineWidth = Math.max(2, fp * 0.22); ctx.strokeStyle = '#000'; ctx.lineJoin = 'round';
+  const text = (t, x, y) => { ctx.strokeText(t, x, y); ctx.fillText(t, x, y); };
+  groups.slice(0, 4).forEach((g, i) => {
+    const live = g.units.filter(u => u.hp > 0);
+    const able = live.filter(u => !(u.asleep > 0) && !u.paralyzed).length;
+    const y = pad + fp * (1 + i * 1.45);
+    ctx.fillStyle = i === 0 ? '#ffd070' : '#d8e0e8';
+    ctx.textAlign = 'right'; text(String(live.length), pad + fp * 1.1, y);
+    ctx.textAlign = 'left'; text(g.mon.name, pad + fp * 1.6, y);
+    ctx.textAlign = 'right'; text(`（${able}）`, w - pad, y);
   });
 }
 
