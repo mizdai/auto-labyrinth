@@ -136,7 +136,12 @@ export function createCharacter(cls, opts = {}) {
     race = pickRace(cls);
     stats = allocate(race, cls, rollBonus(), alignFor(cls, align));
   }
-  if (!stats && fallback) { target = fallback; race = pickRace(fallback); stats = allocate(race, fallback, 30, alignFor(fallback, align)) || { ...RACES[race].base }; }
+  // 目指した職業に届かなければ代わりの職業。ボーナスは普通に振る（以前は30点固定で、忍者に届かない悪の構成の戦士が別格に強くなっていた）
+  if (!stats && fallback) {
+    target = fallback;
+    for (let t = 0; t < tries && !stats; t++) { race = pickRace(fallback); stats = allocate(race, fallback, rollBonus(), alignFor(fallback, align)); }
+    stats ||= { ...RACES[race].base };
+  }
   if (!stats) { stats = allocate(race, cls, 40, alignFor(cls, align)) || { ...RACES[race].base }; }
   const c = CLASSES[target];
   let al = alignFor(target, align);
