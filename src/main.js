@@ -21,7 +21,7 @@ const SPEEDS = [
 
 let game = null, runner = null, paused = false;
 let pendingLogs = [];
-let mapMode = 0; // 0:非表示 1:小 2:大
+let mapFull = false; // 地図の拡大表示
 
 function boot() {
   const saved = localStorage.getItem(SAVE_KEY);
@@ -108,30 +108,30 @@ function render() {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const w = Math.round(rect.width * dpr), h = Math.round(rect.height * dpr);
   if (view.width !== w || view.height !== h) { view.width = w; view.height = h; }
-  vctx.save();
-  // 正方形の描画領域を中央に
-  const size = Math.min(w, h * 1.28);
-  vctx.fillStyle = '#000'; vctx.fillRect(0, 0, w, h);
-  vctx.translate((w - size) / 2, (h - size / 1.28) / 2);
-  vctx.scale(1, 1 / 1.28);
-  drawView(vctx, game, size, updateCam(performance.now()));
-  vctx.restore();
+  // 戦闘中は、迷宮画面が上段の横幅いっぱいになる（地図と情報は隠す）
+  $('#stage').classList.toggle('battle', !!game.battle);
   if (game.battle) drawBattle(vctx, game, w, h);
-  else if (game.chestView) drawChest(vctx, game, w, h);
-
-  if (mapMode) {
-    const mr = mapC.getBoundingClientRect();
-    const ms = Math.round(mr.width * dpr);
-    if (mapC.width !== ms) { mapC.width = ms; mapC.height = ms; }
-    drawMap(mctx, game, ms);
+  else {
+    drawView(vctx, game, w, updateCam(performance.now()), h);
+    if (game.chestView) drawChest(vctx, game, w, h);
   }
 
-  // ヘッダ
-  $('#loc').textContent = game.location === 'town'
-    ? `城下町${game.townState && game.townState !== '城下町' ? '・' + game.townState : ''}`
-    : `地下${game.floor}階 (${game.x},${game.y}) ${DIR_NAMES[game.dir]}向き`;
-  $('#gold').textContent = `${game.gold.toLocaleString()}G`;
-  $('#banner').textContent = game.cleared ? '★ 迷宮制覇 ★' : (game.mode === 'return' && game.location === 'dungeon' ? '帰還中' : '');
+  if (!game.battle) {
+    const mr = mapC.getBoundingClientRect();
+    const ms = Math.round(mr.width * dpr);
+    if (ms > 0) {
+      if (mapC.width !== ms) { mapC.width = ms; mapC.height = ms; }
+      drawMap(mctx, game, ms);
+    }
+  }
+
+  // 地図の下の情報欄
+  const town = game.location === 'town';
+  $('#infoFloor').textContent = town ? '城下町' : `地下${game.floor}階`;
+  $('#infoName').textContent = town ? (game.townState && game.townState !== '城下町' ? game.townState : '') : '';
+  $('#infoPos').textContent = town ? '' : `(${game.x},${game.y}) ${DIR_NAMES[game.dir]}向き`;
+  $('#infoGold').textContent = `${game.gold.toLocaleString()}G`;
+  $('#infoState').textContent = [game.mode === 'return' && !town ? '帰還中' : '', game.cleared ? '★迷宮制覇★' : ''].filter(Boolean).join(' ');
 
   // ログ
   if (pendingLogs.length) {
@@ -175,12 +175,10 @@ function updateSpeedLabel() {
 }
 $('#btnPause').onclick = () => { paused = !paused; updateSpeedLabel(); };
 $('#btnSpeed').onclick = () => { game.settings.speed = (game.settings.speed + 1) % SPEEDS.length; updateSpeedLabel(); };
-$('#btnMap').onclick = () => {
-  mapMode = (mapMode + 1) % 3;
-  mapC.classList.toggle('show', mapMode > 0);
-  mapC.classList.toggle('full', mapMode === 2);
-  mapC.width = 0;
-};
+// 地図ボタン・地図のタップで、上段いっぱいの拡大表示と切り替え
+const toggleMap = () => { mapFull = !mapFull; mapC.classList.toggle('full', mapFull); mapC.width = 0; };
+$('#btnMap').onclick = toggleMap;
+mapC.onclick = toggleMap;
 $('#btnSettings').onclick = openSettings;
 $('#btnInfo').onclick = openInfo;
 $('#party tbody').onclick = (e) => {

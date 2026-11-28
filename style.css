@@ -2,14 +2,18 @@
 html, body { margin: 0; height: 100%; background: #000; color: #d8e0e8; font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; -webkit-text-size-adjust: 100%; }
 body { overscroll-behavior: none; }
 #app { max-width: 520px; margin: 0 auto; height: 100dvh; display: flex; flex-direction: column; padding: env(safe-area-inset-top) 6px env(safe-area-inset-bottom); }
-#top { display: flex; justify-content: space-between; padding: 6px 4px; font-size: 14px; }
-#viewWrap { position: relative; width: 100%; aspect-ratio: 1 / 0.78; border: 1px solid #445; border-radius: 4px; overflow: hidden; flex: none; }
+/* 上段：左に迷宮画面、右に全体地図と情報。戦闘中は迷宮画面が上段の横幅いっぱいになる */
+#stage { position: relative; display: flex; gap: 6px; flex: none; height: max(40dvh, 250px); margin-top: 6px; }
+#viewWrap { position: relative; flex: 1; min-width: 0; border: 1px solid #445; border-radius: 4px; overflow: hidden; background: #000; }
 #view { width: 100%; height: 100%; display: block; }
-#map { position: absolute; right: 6px; top: 6px; width: 38%; aspect-ratio: 1; border: 1px solid #556; display: none; }
-#map.show { display: block; }
-#map.full { width: 92%; right: 4%; top: 2%; }
-#banner { position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; font-size: 13px; color: #9cf; text-shadow: 0 0 4px #000; }
-#controls { display: flex; gap: 6px; padding: 6px 0; flex: none; }
+#side { width: 38%; display: flex; flex-direction: column; gap: 6px; }
+#map { width: 100%; aspect-ratio: 1; border: 1px solid #445; border-radius: 4px; display: block; flex: none; }
+#info { flex: 1; border: 1px solid #334; border-radius: 4px; padding: 4px 6px; font-size: 13px; line-height: 1.45; overflow: hidden; }
+#infoFloor { font-weight: bold; } #infoName { color: #aab; } #infoGold { color: #e8d060; } #infoState { color: #9cf; }
+#stage.battle #side { display: none; }
+/* 地図の拡大表示：上段全体を覆う */
+#map.full { position: absolute; z-index: 2; height: 100%; width: auto; left: 50%; top: 0; transform: translateX(-50%); }
+#controls { display: flex; gap: 6px; padding: 6px 0 4px; flex: none; }
 #controls button { flex: 1; background: #111a24; color: #d8e0e8; border: 1px solid #456; border-radius: 6px; padding: 9px 0; font-size: 14px; }
 #controls button:active { background: #234; }
 #log { flex: 1; min-height: 90px; overflow-y: auto; font-size: 13px; line-height: 1.5; border: 1px solid #334; border-radius: 4px; padding: 4px 6px; background: #05080c; }

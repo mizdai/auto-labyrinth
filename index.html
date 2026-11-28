@@ -10,15 +10,21 @@
 </head>
 <body>
 <div id="app">
-  <header id="top">
-    <div id="loc">―</div>
-    <div id="gold">0G</div>
-  </header>
-  <div id="viewWrap">
-    <canvas id="view"></canvas>
-    <canvas id="map"></canvas>
-    <div id="banner"></div>
+  <div id="stage">
+    <div id="viewWrap"><canvas id="view"></canvas></div>
+    <div id="side">
+      <canvas id="map"></canvas>
+      <div id="info">
+        <div id="infoFloor">―</div>
+        <div id="infoName"></div>
+        <div id="infoPos"></div>
+        <div id="infoGold"></div>
+        <div id="infoState"></div>
+      </div>
+    </div>
   </div>
+  <div id="log"></div>
+  <table id="party"><colgroup><col class="c-name"><col class="c-cls"><col class="c-lv"><col class="c-ac"><col class="c-hp"><col class="c-mp"><col class="c-st"></colgroup><thead><tr><th>名前</th><th>職</th><th>Lv</th><th>AC</th><th>HP</th><th>MP</th><th>状態</th></tr></thead><tbody></tbody></table>
   <div id="controls">
     <button id="btnPause">⏸</button>
     <button id="btnSpeed">×2</button>
@@ -26,8 +32,6 @@
     <button id="btnInfo">記録</button>
     <button id="btnSettings">設定</button>
   </div>
-  <div id="log"></div>
-  <table id="party"><colgroup><col class="c-name"><col class="c-cls"><col class="c-lv"><col class="c-ac"><col class="c-hp"><col class="c-mp"><col class="c-st"></colgroup><thead><tr><th>名前</th><th>職</th><th>Lv</th><th>AC</th><th>HP</th><th>MP</th><th>状態</th></tr></thead><tbody></tbody></table>
 </div>
 
 <div id="modal" class="hidden"><div id="modalBody"></div></div>

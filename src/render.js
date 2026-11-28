@@ -18,14 +18,19 @@ export function poseOf(game) {
   return { x: game.x + 0.5, y: game.y + 0.5, a: game.dir * Math.PI / 2, floor: game.floor, loc: game.location };
 }
 
-export function drawView(ctx, game, size, cam = poseOf(game)) {
+// size：描画領域の幅、height：高さ（縦長でも横長でも、ゆがめずに透視図を描く）
+export function drawView(ctx, game, size, cam = poseOf(game), height = size) {
   ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, size, size);
+  ctx.fillRect(0, 0, size, height);
   ctx.lineWidth = Math.max(1, size / 220);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.strokeStyle = LINE;
-  if (game.location === 'town') { drawTown(ctx, size); return; }
+  if (game.location === 'town') {
+    const s = Math.min(size, height);
+    ctx.save(); ctx.translate((size - s) / 2, (height - s) / 2); drawTown(ctx, s); ctx.restore();
+    return;
+  }
   const F = game.F;
   const fx = Math.sin(cam.a), fy = -Math.cos(cam.a);   // 前方
   const rx = Math.cos(cam.a), ry = Math.sin(cam.a);    // 右
@@ -33,16 +38,16 @@ export function drawView(ctx, game, size, cam = poseOf(game)) {
   const ccx = Math.floor(cam.x), ccy = Math.floor(cam.y);
   if (F.inside(ccx, ccy) && F.cell(ccx, ccy).dark) {
     ctx.fillStyle = DIM; ctx.font = `${size / 14}px sans-serif`; ctx.textAlign = 'center';
-    ctx.fillText('暗闇', size / 2, size / 2);
+    ctx.fillText('暗闇', size / 2, height / 2);
     return;
   }
-  const f = FOCAL * size, half = size / 2;
+  const f = FOCAL * size, half = size / 2, halfY = height / 2;
   // ワールド座標(wx,wy,h) → カメラ座標(xc,zc,yc)
   const toCam = (wx, wy, h) => {
     const dx = wx - ex, dy = wy - ey;
     return [dx * rx + dy * ry, dx * fx + dy * fy, h - 0.5];
   };
-  const proj = (p) => [half + p[0] / p[1] * f, half - p[2] / p[1] * f];
+  const proj = (p) => [half + p[0] / p[1] * f, halfY - p[2] / p[1] * f];
 
   // 描画対象を集める
   const items = [];
@@ -302,14 +307,26 @@ export const BATTLE_CANVAS_RATIO = 0.68;
 export function battleScale(h) { return Math.max(1, Math.floor(h * BATTLE_CANVAS_RATIO / SPRITE_PX)); }
 export function drawBattle(ctx, game, w, h) {
   const B = game.battle;
-  ctx.fillStyle = 'rgba(0,0,0,0.72)';
+  ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, w, h);
   const groups = B.groups.filter(g => g.units.some(u => u.hp > 0));
   if (!groups.length) return;
   const lead = groups[0];
-  const scale = battleScale(h);
+  // 上：魔物の名前（グループごとに1行、先頭グループを強調）
+  const fp = Math.max(12, Math.round(Math.min(w / 24, h / 16)));
+  const lines = groups.map(g => { const n = g.units.filter(u => u.hp > 0).length; return n > 1 ? `${g.mon.name} ×${n}` : g.mon.name; });
+  ctx.font = `${fp}px sans-serif`;
+  ctx.textAlign = 'center';
+  lines.forEach((t, i) => {
+    ctx.fillStyle = i === 0 ? '#ffd070' : '#d8e0e8';
+    ctx.fillText(t, w / 2, fp * (1.4 + i * 1.3));
+  });
+  // 名前の欄は最大4グループ分の高さで固定（敵の数で絵の大きさや位置が変わらないように）
+  const top = fp * (1.4 + 3 * 1.3) + fp * 0.6;
+  // 中央：先頭グループの絵（名前の欄の下の高さに収まる整数倍率）
+  const scale = Math.max(1, Math.min(battleScale(h), Math.floor((h - top - h * 0.04) / SPRITE_PX)));
   const size = SPRITE_PX * scale;
-  const bottom = Math.round(h * 0.86);
+  const bottom = Math.round(top + (h - top + size) / 2 - h * 0.02);
   const img = sprite(lead.mon.id);
   const ok = img.complete && img.naturalWidth && !img._failed;
   if (ok) {
@@ -321,19 +338,6 @@ export function drawBattle(ctx, game, w, h) {
   } else {
     drawMonster(ctx, lead.mon, w / 2, bottom - size / 2, size * 0.8);
   }
-  // 敵グループの一覧
-  const fp = Math.max(12, Math.round(w / 28));
-  const lines = groups.map(g => `${g.mon.name} ×${g.units.filter(u => u.hp > 0).length}`);
-  ctx.font = `${fp}px sans-serif`;
-  const bw = Math.max(...lines.map(t => ctx.measureText(t).width)) + fp * 1.2;
-  const pad = fp * 0.5;
-  ctx.fillStyle = 'rgba(0,0,0,0.6)';
-  ctx.fillRect(pad, pad, bw, lines.length * fp * 1.35 + pad);
-  ctx.textAlign = 'left';
-  lines.forEach((t, i) => {
-    ctx.fillStyle = i === 0 ? '#ffd070' : '#d8e0e8';
-    ctx.fillText(t, pad + fp * 0.6, pad + fp * (1.1 + i * 1.35));
-  });
 }
 
 // 宝箱（魔物と同じ 96×96・同じ倍率で、足元の高さも揃える）
