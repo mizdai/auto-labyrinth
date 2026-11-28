@@ -300,8 +300,7 @@ function contentBox(img) {
 export function preloadSprites(ids) { for (const id of ids) sprite(id); }
 
 // 戦闘画面（引き伸ばしのない実ピクセル座標 w×h で描く）
-// 絵は先頭グループの1枚だけを、画面の高さで決まる一定の整数倍率で描く（敵の数に関係なく同じ大きさ）。
-// 全グループは左上に名前と数の一覧で示す。
+// 上に全グループの「数・名前・（動ける数）」、下に先頭から2グループまでの絵を、一定の整数倍率で並べる。
 // 96pxのキャンバス全体が表示枠の高さの約2/3になる整数倍率
 export const BATTLE_CANVAS_RATIO = 0.68;
 export function battleScale(h) { return Math.max(1, Math.floor(h * BATTLE_CANVAS_RATIO / SPRITE_PX)); }
@@ -311,33 +310,40 @@ export function drawBattle(ctx, game, w, h) {
   ctx.fillRect(0, 0, w, h);
   const groups = B.groups.filter(g => g.units.some(u => u.hp > 0));
   if (!groups.length) return;
-  const lead = groups[0];
-  // 上：魔物の名前（グループごとに1行、先頭グループを強調）
-  const fp = Math.max(12, Math.round(Math.min(w / 24, h / 16)));
-  const lines = groups.map(g => { const n = g.units.filter(u => u.hp > 0).length; return n > 1 ? `${g.mon.name} ×${n}` : g.mon.name; });
+  // 上：グループごとに「数　名前　（動ける数）」を左寄せで（先頭グループを強調）
+  const fp = Math.max(12, Math.round(Math.min(w / 22, h / 15)));
+  const pad = Math.round(fp * 0.8);
   ctx.font = `${fp}px sans-serif`;
-  ctx.textAlign = 'center';
-  lines.forEach((t, i) => {
+  groups.slice(0, 4).forEach((g, i) => {
+    const live = g.units.filter(u => u.hp > 0);
+    const able = live.filter(u => !(u.asleep > 0) && !u.paralyzed).length;
+    const y = pad + fp * (0.9 + i * 1.3);
     ctx.fillStyle = i === 0 ? '#ffd070' : '#d8e0e8';
-    ctx.fillText(t, w / 2, fp * (1.4 + i * 1.3));
+    ctx.textAlign = 'right'; ctx.fillText(String(live.length), pad + fp * 1.2, y);
+    ctx.textAlign = 'left'; ctx.fillText(g.mon.name, pad + fp * 1.8, y);
+    ctx.textAlign = 'right'; ctx.fillText(`（${able}）`, w - pad, y);
   });
   // 名前の欄は最大4グループ分の高さで固定（敵の数で絵の大きさや位置が変わらないように）
-  const top = fp * (1.4 + 3 * 1.3) + fp * 0.6;
-  // 中央：先頭グループの絵（名前の欄の下の高さに収まる整数倍率）
-  const scale = Math.max(1, Math.min(battleScale(h), Math.floor((h - top - h * 0.04) / SPRITE_PX)));
+  const top = pad + fp * (0.9 + 3 * 1.3) + fp * 0.7;
+  // 下：先頭から2グループまでの絵を横に並べる。倍率は2体並べても収まる整数倍率で、敵の数によらず一定
+  const scale = Math.max(1, Math.min(battleScale(h), Math.floor((h - top - h * 0.03) / SPRITE_PX), Math.floor(w / 2 / SPRITE_PX)));
   const size = SPRITE_PX * scale;
-  const bottom = Math.round(top + (h - top + size) / 2 - h * 0.02);
-  const img = sprite(lead.mon.id);
-  const ok = img.complete && img.naturalWidth && !img._failed;
-  if (ok) {
-    // 描かれている部分の中心を画面中央に（余白はそのまま）
-    const box = img._bbox || { l: 0, r: SPRITE_PX };
-    const left = Math.round(w / 2 - ((box.l + box.r) / 2) * scale);
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(img, left, bottom - size, size, size);
-  } else {
-    drawMonster(ctx, lead.mon, w / 2, bottom - size / 2, size * 0.8);
-  }
+  const bottom = Math.round(h - h * 0.03);
+  const shown = groups.slice(0, 2);
+  shown.forEach((g, i) => {
+    const cx = shown.length === 1 ? w / 2 : w * (i === 0 ? 0.28 : 0.72);
+    const img = sprite(g.mon.id);
+    const ok = img.complete && img.naturalWidth && !img._failed;
+    if (ok) {
+      // 描かれている部分の中心を、それぞれの位置の中央に（余白はそのまま）
+      const box = img._bbox || { l: 0, r: SPRITE_PX };
+      const left = Math.round(cx - ((box.l + box.r) / 2) * scale);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, left, bottom - size, size, size);
+    } else {
+      drawMonster(ctx, g.mon, cx, bottom - size / 2, size * 0.8);
+    }
+  });
 }
 
 // 宝箱（魔物と同じ 96×96・同じ倍率で、足元の高さも揃える）
