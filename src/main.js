@@ -108,15 +108,14 @@ function render() {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const w = Math.round(rect.width * dpr), h = Math.round(rect.height * dpr);
   if (view.width !== w || view.height !== h) { view.width = w; view.height = h; }
-  // 戦闘中は、迷宮画面が上段の横幅いっぱいになる（地図と情報は隠す）
-  $('#stage').classList.toggle('battle', !!game.battle);
-  if (game.battle) drawBattle(vctx, game, w, h);
-  else {
-    drawView(vctx, game, w, updateCam(performance.now()), h);
-    if (game.chestView) drawChest(vctx, game, w, h);
-  }
+  // 戦闘中（戦闘後の宝箱を開けてアイテムを得るまで）は、上段の横幅いっぱいの戦闘画面（地図と情報は隠す）
+  const battleScreen = !!(game.battle || game.chestView);
+  $('#stage').classList.toggle('battle', battleScreen);
+  if (game.battle) drawBattle(vctx, game, w, h, dpr);
+  else if (game.chestView) drawChest(vctx, game, w, h, dpr);
+  else drawView(vctx, game, w, updateCam(performance.now()), h);
 
-  if (!game.battle) {
+  if (!battleScreen) {
     const mr = mapC.getBoundingClientRect();
     const ms = Math.round(mr.width * dpr);
     if (ms > 0) {

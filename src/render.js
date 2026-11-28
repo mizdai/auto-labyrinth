@@ -304,34 +304,41 @@ export function preloadSprites(ids) { for (const id of ids) sprite(id); }
 // 96pxのキャンバス全体が表示枠の高さの約2/3になる整数倍率
 export const BATTLE_CANVAS_RATIO = 0.68;
 export function battleScale(h) { return Math.max(1, Math.floor(h * BATTLE_CANVAS_RATIO / SPRITE_PX)); }
-export function drawBattle(ctx, game, w, h) {
+// 戦闘画面のレイアウト（実ピクセル）。dpr：画面の拡大率（文字はほかの欄と同じ13px）
+function battleLayout(w, h, dpr) {
+  const fp = Math.round(13 * dpr);
+  const pad = Math.round(fp * 0.7);
+  // 名前の欄は最大4グループ分の高さで固定（敵の数で絵の大きさや位置が変わらないように）
+  const top = pad + fp * (1 + 3 * 1.45) + fp * 0.4;
+  // 絵：2体を横に並べられる、できるだけ大きい整数倍率（絵の左右の余白は重なってよい）。敵の数によらず一定
+  const scale = Math.max(1, Math.min(Math.floor((h - top - pad * 0.5) / SPRITE_PX), Math.floor(w / 2 / (SPRITE_PX * 0.82))));
+  const size = SPRITE_PX * scale;
+  const bottom = Math.round(h - pad * 0.5);
+  return { fp, pad, top, scale, size, bottom };
+}
+export function drawBattle(ctx, game, w, h, dpr = 1) {
   const B = game.battle;
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, w, h);
   const groups = B.groups.filter(g => g.units.some(u => u.hp > 0));
   if (!groups.length) return;
+  const L = battleLayout(w, h, dpr);
+  const { fp, pad, scale, size, bottom } = L;
   // 上：グループごとに「数　名前　（動ける数）」を左寄せで（先頭グループを強調）
-  const fp = Math.max(12, Math.round(Math.min(w / 22, h / 15)));
-  const pad = Math.round(fp * 0.8);
   ctx.font = `${fp}px sans-serif`;
   groups.slice(0, 4).forEach((g, i) => {
     const live = g.units.filter(u => u.hp > 0);
     const able = live.filter(u => !(u.asleep > 0) && !u.paralyzed).length;
-    const y = pad + fp * (0.9 + i * 1.3);
+    const y = pad + fp * (1 + i * 1.45);
     ctx.fillStyle = i === 0 ? '#ffd070' : '#d8e0e8';
-    ctx.textAlign = 'right'; ctx.fillText(String(live.length), pad + fp * 1.2, y);
-    ctx.textAlign = 'left'; ctx.fillText(g.mon.name, pad + fp * 1.8, y);
+    ctx.textAlign = 'right'; ctx.fillText(String(live.length), pad + fp * 1.1, y);
+    ctx.textAlign = 'left'; ctx.fillText(g.mon.name, pad + fp * 1.6, y);
     ctx.textAlign = 'right'; ctx.fillText(`（${able}）`, w - pad, y);
   });
-  // 名前の欄は最大4グループ分の高さで固定（敵の数で絵の大きさや位置が変わらないように）
-  const top = pad + fp * (0.9 + 3 * 1.3) + fp * 0.7;
-  // 下：先頭から2グループまでの絵を横に並べる。倍率は2体並べても収まる整数倍率で、敵の数によらず一定
-  const scale = Math.max(1, Math.min(battleScale(h), Math.floor((h - top - h * 0.03) / SPRITE_PX), Math.floor(w / 2 / SPRITE_PX)));
-  const size = SPRITE_PX * scale;
-  const bottom = Math.round(h - h * 0.03);
+  // 下：先頭から2グループまでの絵を横に並べる
   const shown = groups.slice(0, 2);
   shown.forEach((g, i) => {
-    const cx = shown.length === 1 ? w / 2 : w * (i === 0 ? 0.28 : 0.72);
+    const cx = shown.length === 1 ? w / 2 : w * (i === 0 ? 0.26 : 0.74);
     const img = sprite(g.mon.id);
     const ok = img.complete && img.naturalWidth && !img._failed;
     if (ok) {
@@ -354,14 +361,13 @@ function chestImg(open) {
   return chestImgs[k];
 }
 export function preloadChest() { chestImg(false); chestImg(true); }
-export function drawChest(ctx, game, w, h) {
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+// 宝箱：戦闘画面のまま（黒い背景、魔物の絵と同じ倍率・同じ足元の高さで中央に）
+export function drawChest(ctx, game, w, h, dpr = 1) {
+  ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, w, h);
   const img = chestImg(game.chestView.open);
   if (!img.complete || !img.naturalWidth) return;
-  const scale = battleScale(h);
-  const size = SPRITE_PX * scale;
-  const bottom = Math.round(h * 0.86);
+  const { size, bottom } = battleLayout(w, h, dpr);
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(img, Math.round(w / 2 - size / 2), bottom - size, size, size);
 }
