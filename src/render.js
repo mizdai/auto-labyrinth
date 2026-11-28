@@ -343,18 +343,27 @@ export function drawBattle(ctx, game, w, h, dpr = 1) {
       drawMonster(ctx, g.mon, cx, bottom - size / 2, size * 0.8);
     }
   });
-  // 上：グループごとに「数　名前　（動ける数）」を左寄せで（先頭グループを強調）。絵に重なっても読めるよう縁取りする
+  // 上：グループごとの名前と数（先頭グループを強調）。絵に重なっても読めるよう縁取りする
   ctx.font = `${fp}px sans-serif`;
   ctx.lineWidth = Math.max(2, fp * 0.22); ctx.strokeStyle = '#000'; ctx.lineJoin = 'round';
   const text = (t, x, y) => { ctx.strokeText(t, x, y); ctx.fillText(t, x, y); };
-  groups.slice(0, 4).forEach((g, i) => {
+  // 「名前　総数 （動ける数）」を、表のように列をそろえて、全体を中央寄せで並べる
+  const rows = groups.slice(0, 4).map(g => {
     const live = g.units.filter(u => u.hp > 0);
     const able = live.filter(u => !(u.asleep > 0) && !u.paralyzed).length;
+    return { name: g.mon.name, n: String(live.length), able: `(${able})` };
+  });
+  const gap = fp * 1.2;
+  const nameW = Math.max(...rows.map(r => ctx.measureText(r.name).width));
+  const numW = Math.max(...rows.map(r => ctx.measureText(r.n).width));
+  const ableW = Math.max(...rows.map(r => ctx.measureText(r.able).width));
+  const x0 = Math.round((w - (nameW + gap + numW + fp * 0.4 + ableW)) / 2);
+  rows.forEach((r, i) => {
     const y = pad + fp * (1 + i * 1.45);
     ctx.fillStyle = i === 0 ? '#ffd070' : '#d8e0e8';
-    ctx.textAlign = 'right'; text(String(live.length), pad + fp * 1.1, y);
-    ctx.textAlign = 'left'; text(g.mon.name, pad + fp * 1.6, y);
-    ctx.textAlign = 'right'; text(`（${able}）`, w - pad, y);
+    ctx.textAlign = 'left'; text(r.name, x0, y);
+    ctx.textAlign = 'right'; text(r.n, x0 + nameW + gap + numW, y);
+    ctx.textAlign = 'left'; text(r.able, x0 + nameW + gap + numW + fp * 0.4, y);
   });
 }
 
