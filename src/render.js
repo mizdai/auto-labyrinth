@@ -308,14 +308,16 @@ export function battleScale(h) { return Math.max(1, Math.floor(h * BATTLE_CANVAS
 function battleLayout(w, h, dpr) {
   const fp = Math.round(13 * dpr);
   const pad = Math.round(fp * 0.7);
-  // 絵の上端は、名前3行分の下で固定（敵の数で絵の大きさや位置が変わらないように）。
-  // 4グループ目の名前は絵の上に重ねて書く
-  const top = pad + fp * (1 + 2 * 1.45) + fp * 0.4;
-  // 絵：2体を横に並べられる、できるだけ大きい整数倍率（絵の左右の余白は重なってよい）。敵の数によらず一定
-  const scale = Math.max(1, Math.min(Math.floor((h - top - pad * 0.5) / SPRITE_PX), Math.floor(w / 2 / (SPRITE_PX * 0.82))));
+  // 絵の大きさは、96pxの絵を画面上で2倍（192px）にするのを上限とする（敵の数によらず一定）。
+  // 名前4行分の下に収まればそこに、収まらない狭い画面では名前3行分の下までを使い、4行目の名前は絵に重ねて書く
+  const top4 = pad + fp * (1 + 3 * 1.45) + fp * 0.4;
+  const top3 = pad + fp * (1 + 2 * 1.45) + fp * 0.4;
+  const fit = (top) => Math.floor((h - top - pad * 0.5) / SPRITE_PX);
+  const want = Math.min(Math.round(2 * dpr), Math.floor(w / 2 / (SPRITE_PX * 0.82)));
+  const scale = Math.max(1, Math.min(want, fit(top4) >= want ? want : fit(top3)));
   const size = SPRITE_PX * scale;
   const bottom = Math.round(h - pad * 0.5);
-  return { fp, pad, top, scale, size, bottom };
+  return { fp, pad, scale, size, bottom };
 }
 export function drawBattle(ctx, game, w, h, dpr = 1) {
   const B = game.battle;
