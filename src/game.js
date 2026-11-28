@@ -508,6 +508,18 @@ export class Game {
         return c.type === 'pit' || c.type === 'teleport' || c.type === 'alarm' || (avoidBoss && c.type === 'boss' && !this.bossBeaten);
       };
       let path = findPath(F, known, this.x, this.y, goal, avoid, this.dir);
+      // 罠を踏む道しか見つからないときは、罠を通らずに行ける未踏の区画を先に探す（迂回路が見つかるかもしれない）
+      if (path && path.length && label !== 'up') {
+        const trapOnPath = (pth) => {
+          let x = this.x, y = this.y;
+          for (const dd of pth) { x += DX[dd]; y += DY[dd]; const t = F.cell(x, y).type; if (known[y * W + x] && (t === 'pit' || t === 'teleport' || t === 'alarm')) return true; }
+          return false;
+        };
+        if (trapOnPath(path)) {
+          const alt = findPath(F, known, this.x, this.y, (x, y) => !known[y * W + x], avoid, this.dir);
+          if (alt && alt.length && !trapOnPath(alt)) path = alt;
+        }
+      }
       if (!path || !path.length) {
         // 知っている道では行き先にたどり着けない（テレポーターで知らない場所に飛ばされた等）：
         // まず近くの未踏の区画を探索して、道を見つける
@@ -605,8 +617,8 @@ export class Game {
         if (hits.length) damageParty(this, hits); else this.log('全員うまくかわした。');
         yield 2;
       } else if (cell.type === 'teleport') {
-        this.log('床の魔法陣が光った！ どこかへ飛ばされた。', 'bad');
-        { const p = R.pick(F.openCells()); this.x = p.x; this.y = p.y; }
+        this.log('床の魔法陣が光った！ 別の場所へ飛ばされた。', 'bad');
+        { const p = cell.dest || R.pick(F.openCells()); this.x = p.x; this.y = p.y; }
         known[this.y * W + this.x] = 1;
         yield 2;
         continue;

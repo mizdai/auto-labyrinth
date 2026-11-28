@@ -921,20 +921,23 @@ function decorate(F, rng, floor, up, rooms, order, startRoom) {
   const allOpen = F.openCells();
   const onShortcut = new Set(F.shortcut ? (F.shortcutPath || []).map(p => p.y * W + p.x) : []);
   const blocked = new Set();
+  // 罠のマスは「通り抜けない」として、上り階段から全部の区画（罠のマス自体も含む）に行けるか。
+  // 罠のマスには、別の罠を通らずに入れなければならない（罠の奥の袋小路に罠を置かない）
   const connectedWithout = (bx, by) => {
     const seen = new Uint8Array(W * H);
-    const skip = (x, y) => (x === bx && y === by) || blocked.has(y * W + x);
+    const isTrap = (x, y) => (x === bx && y === by) || blocked.has(y * W + x);
     const q = [[up.x, up.y]]; seen[up.y * W + up.x] = 1; let n = 1;
     while (q.length) {
       const [x, y] = q.pop();
+      if (isTrap(x, y)) continue;   // 罠のマスには入れるが、そこから先へは進まない
       for (let d = 0; d < 4; d++) {
         if (!F.passable(x, y, d)) continue;
         const nx = x + DX[d], ny = y + DY[d];
-        if (seen[ny * W + nx] || skip(nx, ny)) continue;
+        if (seen[ny * W + nx]) continue;
         seen[ny * W + nx] = 1; n++; q.push([nx, ny]);
       }
     }
-    return n === allOpen.length - 1 - blocked.size;
+    return n === allOpen.length;
   };
   const corridor = allOpen.filter(p => F.cell(p.x, p.y).room < 0 && !F.cell(p.x, p.y).type
     && !onShortcut.has(p.y * W + p.x) && Math.abs(p.x - up.x) + Math.abs(p.y - up.y) >= 3);
@@ -957,6 +960,18 @@ function decorate(F, rng, floor, up, rooms, order, startRoom) {
         if (c.type !== 'up' && c.type !== 'down' && c.type !== 'boss' && c.type !== 'elevator') c.dark = true;
       }
     }
+  }
+
+  // 8. テレポートの罠の飛び先：罠ごとに決まった場所（ランダムではない）。
+  //    罠のない普通の区画で、罠から離れた場所。罠を通らなくても迷宮全体がつながっている（6.で確認済み）ので、
+  //    飛ばされた先からも、どこへでも歩いて行ける
+  const plain = allOpen.filter(p => { const c = F.cell(p.x, p.y); return !c.type && !onShortcut.has(p.y * W + p.x); });
+  for (const p of allOpen) {
+    const c = F.cell(p.x, p.y);
+    if (c.type !== 'teleport') continue;
+    const far = plain.filter(q => Math.abs(q.x - p.x) + Math.abs(q.y - p.y) >= 8);
+    const q = rng.pick(far.length ? far : plain);
+    c.dest = { x: q.x, y: q.y };
   }
 }
 
