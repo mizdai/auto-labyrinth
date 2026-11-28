@@ -354,9 +354,10 @@ export function drawBattle(ctx, game, w, h, dpr = 1) {
     return { name: g.mon.name, n: String(live.length), able: `(${able})` };
   });
   const gap = fp * 1.2;
-  const nameW = Math.max(...rows.map(r => ctx.measureText(r.name).width));
-  const numW = Math.max(...rows.map(r => ctx.measureText(r.n).width));
-  const ableW = Math.max(...rows.map(r => ctx.measureText(r.able).width));
+  // 列の幅は、いちばん長い魔物の名前（10文字）と2桁の数の分で固定（戦闘ごとに表の位置が動かないように）
+  const nameW = Math.max(fp * 10, ...rows.map(r => ctx.measureText(r.name).width));
+  const numW = ctx.measureText('99').width;
+  const ableW = ctx.measureText('(99)').width;
   const x0 = Math.round((w - (nameW + gap + numW + fp * 0.4 + ableW)) / 2);
   rows.forEach((r, i) => {
     const y = pad + fp * (1 + i * 1.45);
