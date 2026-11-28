@@ -223,7 +223,8 @@ export function canCast(c, sp) {
   return canAct(c) && c.mp[sp.school][sp.lv - 1] > 0 && knowsSpell(c, sp);
 }
 
-// 転職：レベル1・経験値0に戻り、能力値は種族の基本値に戻る。
+// 転職：レベル1・経験値0に戻り、能力値は種族の基本値まで戻る。ただし転職先の条件値までは残る
+// （転職できた能力は失わない。条件を超えていた分だけ失う）。
 // 最大HPと、それまでに覚えた呪文は残る（呪文の回数は、覚えている呪文の数だけ残る）
 export function changeClass(c, cls) {
   const from = c.cls;
@@ -231,7 +232,8 @@ export function changeClass(c, cls) {
   c.history = [...(c.history || []), from];
   c.cls = cls;
   c.level = 1; c.exp = 0;
-  c.stats = { ...RACES[c.race].base };
+  const base = RACES[c.race].base, req = CLASSES[cls].req || {};
+  c.stats = Object.fromEntries(STATS.map(k => [k, Math.max(base[k], Math.min(c.stats[k], req[k] || 0))]));
   c.status = 'ok'; c.hp = c.maxhp;
   const removed = [];
   for (const s of SLOTS) {

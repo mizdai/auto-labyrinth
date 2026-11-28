@@ -317,7 +317,7 @@ export class Game {
     const lv = c.level;
     const { from, removed } = changeClass(c, cls);
     this.log(`訓練場で、${c.name}（Lv${lv}）が${CLASSES[from].name}から${CLASSES[cls].name}に転職した！`, 'good');
-    this.log(`レベル1に戻り、能力値は種族の基本値に戻った。最大HP${c.maxhp}と覚えた呪文はそのまま。`);
+    this.log(`レベル1に戻り、能力値は種族の基本値まで戻った（転職先の条件の値までは残った）。最大HP${c.maxhp}と覚えた呪文はそのまま。`);
     for (const e of removed) this.bag.push(e);
     if (removed.length) this.log(`${removed.map(e => itemName(e)).join('、')}は装備できなくなり、袋にしまった。`);
     yield 2;
