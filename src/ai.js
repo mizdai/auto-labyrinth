@@ -1,7 +1,7 @@
 // AI：プレイヤーの代わりにすべての判断を行う
 import { SPELLS, SPELL_BY_ID } from './data.js';
 import { ITEMS } from './items.js';
-import { diceAvg } from './rng.js';
+import { R, diceAvg } from './rng.js';
 import { isAlive, canAct, canCast, mpRatio, maxSlots } from './character.js';
 
 // 方針ごとのパラメータ
@@ -390,6 +390,48 @@ export function campPlan(game, hurtBelow = 0.8) {
 const SICK = ['dead', 'ash', 'stoned', 'paralyzed'];
 const FRONT_CLASSES = ['fighter', 'samurai', 'lord', 'ninja'];
 export const CC_RULES = { bishopSwap: true };
+
+// ================= 友好的な魔物への対応 =================
+// 性格が変われば就ける職業（転職の条件は満たしているが、性格だけが合わない）がある仲間
+function wantsAlign(c, to) {
+  if (c.align === to || !isAlive(c)) return false;
+  const held = new Set([c.cls, ...(c.history || [])]);
+  return ['lord', 'samurai', 'ninja'].some(k => !held.has(k) && meetsReq(c.stats, k)
+    && CLASSES[k].align.includes(to) && !CLASSES[k].align.includes(c.align));
+}
+// 新人の性格を決める。基本は pref（パーティで多いほうの性格）。
+// ただし、上位職（君主・侍・忍者）の条件にあと少し（足りない能力値が合計4以下、1つあたり3以下）で届き、
+// その上位職が pref では就けないなら、その上位職に就ける性格にする（中立で済むなら中立：善とも悪とも組みやすい）。
+// 能力値はレベルアップで伸びるので、この程度の不足なら転職できる見込みが高い
+export function recruitAlign(c, pref) {
+  const allowed = CLASSES[c.cls].align;
+  const base = allowed.includes(pref) ? pref : c.align;
+  for (const k of ['lord', 'samurai', 'ninja']) {
+    if (k === c.cls || CLASSES[k].align.includes(base)) continue;
+    let sum = 0, max = 0;
+    for (const [st, v] of Object.entries(CLASSES[k].req)) { const d = Math.max(0, v - c.stats[st]); sum += d; max = Math.max(max, d); }
+    if (sum > 4 || max > 3) continue;
+    const opts = [...CLASSES[k].align].filter(a => allowed.includes(a));
+    if (opts.length) return opts.includes('N') ? 'N' : opts[0];
+  }
+  return base;
+}
+
+// 'fight'（襲う）か 'leave'（立ち去る）。状況で決まる場合はそれに従い、そうでなければ性格の傾きで確率を決めて選ぶ
+//  - 帰還中・傷が深い・倒れた仲間がいる・相手がパーティより格上 → 立ち去る
+//  - 悪の仲間が多いほど襲いやすい（全員善で15%、全員悪で65%）
+//  - 善に変われば上位職に就ける悪の仲間がいれば立ち去りやすく、悪に変われば忍者になれる善の仲間がいれば襲いやすい
+export function friendlyChoice(game, group) {
+  const al = game.party.filter(isAlive);
+  const cond = partyCondition(game);
+  if (game.mode === 'return' || cond.hp < 0.6 || cond.bad) return 'leave';
+  if (group.mon.lv > partyLevel(game)) return 'leave';
+  const evil = al.filter(c => c.align === 'E').length / Math.max(1, al.length);
+  let p = 0.15 + 0.5 * evil;
+  if (al.some(c => wantsAlign(c, 'G'))) p -= 0.4;
+  if (al.some(c => wantsAlign(c, 'E'))) p += 0.3;
+  return R.chance(Math.max(0.05, Math.min(0.9, p))) ? 'fight' : 'leave';
+}
 export function classChangePlan(game) {
   const P = game.party;
   if (P.length < 6 || P.some(c => c.status !== 'ok')) return null;

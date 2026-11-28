@@ -218,6 +218,17 @@ export function changeClass(c, cls) {
   restoreMP(c);
   return { from, removed };
 }
+// 性格の変化：友好的な魔物を襲うと善の仲間が悪に、立ち去ると悪の仲間が善に変わることがある（中立は変わらない）。
+// 今の職業がその性格になれないとき（侍・君主が悪に、盗賊・忍者が善に）は変わらない
+export const ALIGN_SHIFT = { fight: { from: 'G', to: 'E', p: 0.2 }, leave: { from: 'E', to: 'G', p: 0.1 } };
+export function shiftAlignment(c, act) {
+  const s = ALIGN_SHIFT[act];
+  if (!s || c.align !== s.from || !isAlive(c)) return false;
+  if (!CLASSES[c.cls].align.includes(s.to) || !R.chance(s.p)) return false;
+  c.align = s.to;
+  return true;
+}
+
 export function hasMP(c) { return c.mp.mage.some(v => v > 0) || c.mp.priest.some(v => v > 0); }
 export function mpRatio(c) {
   const m = maxSlots(c); let a = 0, b = 0;

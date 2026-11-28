@@ -9,7 +9,7 @@ import {
 import { getFloor, findPath, W, H, DX, DY, DIR_NAMES, MAX_FLOOR, MAP_VERSION, THEMES, OPEN } from './dungeon.js';
 import { battle, makeEncounter, bossEncounter, damageChar, damageParty } from './combat.js';
 import {
-  shouldReturn, targetFloor, readyFor, campPlan, partyCondition, policy, partyLevel, recommendedLevel, classChangePlan,
+  shouldReturn, targetFloor, readyFor, campPlan, partyCondition, policy, partyLevel, recommendedLevel, classChangePlan, recruitAlign,
 } from './ai.js';
 
 export const SAVE_KEY = 'autoLabyrinth.save.v1';
@@ -224,8 +224,12 @@ export class Game {
       take((p, [c]) => roleOf(p) === roleOf({ cls: c }));
       const slot = comp.slots[filled.indexOf(false)] || comp.slots[this.party.length];
       const [cls, fb, al] = slot;
-      const ok = this.party.find(p => p.align === 'G') ? 'G' : this.party.find(p => p.align === 'E') ? 'E' : al;
-      const c = createCharacter(cls, { align: CLASSES[cls].align.includes(ok) ? ok : al, fallback: fb, used, tries: 60 });
+      // 新人の性格：善悪混合のパーティも組める。基本は今の仲間で多いほうの性格（同数なら構成の性格）に合わせ、
+      // 別の性格なら上位職に手が届く新人だけ、その性格にする（recruitAlign）
+      const nG = this.party.filter(p => p.align === 'G').length, nE = this.party.filter(p => p.align === 'E').length;
+      const pref = nG > nE ? 'G' : nE > nG ? 'E' : al;
+      const c = createCharacter(cls, { align: CLASSES[cls].align.includes(pref) ? pref : al, fallback: fb, used, tries: 60 });
+      c.align = recruitAlign(c, pref);
       used.add(c.name);
       // 新人は支度金を持ってくる
       this.gold += R.range(100, 200);
