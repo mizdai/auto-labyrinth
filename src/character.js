@@ -58,7 +58,7 @@ export function meetsReq(stats, cls) {
 }
 
 // 目標職に就けるよう自動でボーナスを振る。成功時は stats を返す
-export function allocate(race, cls, bonus) {
+export function allocate(race, cls, bonus, align = null) {
   const base = { ...RACES[race].base };
   const req = CLASSES[cls].req;
   let need = 0;
@@ -69,7 +69,7 @@ export function allocate(race, cls, bonus) {
   let rest = bonus - need;
   // 残りの振り方：
   // 1. 職業の優先する能力値を、順番に1点ずつ15まで（15あれば十分。18まではレベルアップで伸びる）
-  // 2. 将来の転職先（魔術師→君主、僧侶→侍など）の条件に届くまで
+  // 2. 将来の転職先（性格で変わる。善の戦士→君主、悪の戦士→忍者など）の条件に届くまで
   // 3. まだ余れば、優先する能力値を18まで、それでも余れば残りの能力値へ
   const raise = (keys, cap) => {
     let moved = true;
@@ -80,17 +80,35 @@ export function allocate(race, cls, bonus) {
   };
   const prio = CLASSES[cls].prio;
   raise(prio, 15);
-  const future = FUTURE_CLASS[cls];
-  if (future) {
+  // 足りない能力値に1点ずつ順番に振る（運のように最後に並ぶ能力値も置き去りにしない）
+  for (const future of futureClasses(cls, align)) {
     const freq = CLASSES[future].req;
-    for (const k of STATS) while (rest > 0 && freq[k] && st[k] < freq[k]) { st[k]++; rest--; }
+    let moved = true;
+    while (rest > 0 && moved) {
+      moved = false;
+      for (const k of STATS) if (rest > 0 && freq[k] && st[k] < freq[k]) { st[k]++; rest--; moved = true; }
+    }
   }
   raise(prio, 18);
   raise(STATS, 18);
   return st;
 }
-// 能力値が余ったときに見据える、将来の転職先
-const FUTURE_CLASS = { mage: 'lord', priest: 'samurai', samurai: 'lord', fighter: 'samurai' };
+// 能力値が余ったときに見据える、将来の転職先（性格ごと、この順に条件を満たしていく）。
+// 侍の条件は君主の条件に含まれるので、まず侍に届かせ、善なら残りで君主に近づける。
+// 悪は忍者（全能力17）が遠すぎて点を散らすだけなので、侍まで（性格が善に変われば君主も狙える）
+const FUTURE_CLASS = {
+  fighter: { G: ['samurai', 'lord'], N: ['samurai'], E: ['samurai'] },
+  mage:    { G: ['samurai', 'lord'], N: ['samurai'], E: ['samurai'] },
+  priest:  { G: ['samurai', 'lord'], E: ['samurai'] },
+  samurai: { G: ['lord'], N: ['lord'] },
+};
+function futureClasses(cls, align) {
+  const byAlign = FUTURE_CLASS[cls];
+  if (!byAlign) return [];
+  return byAlign[align] || byAlign[Object.keys(byAlign)[0]];
+}
+// 作成時の性格：指定があって職業がなれるならそれ、なければ善→その職業の最初の性格
+const alignFor = (cls, align) => align && CLASSES[cls].align.includes(align) ? align : (CLASSES[cls].align.includes('G') ? 'G' : CLASSES[cls].align[0]);
 
 // 職業ごとの種族の出やすさ（重み）。向いている種族が多いが、どの種族もまれに出る
 const RACE_WEIGHT = {
@@ -116,12 +134,17 @@ export function createCharacter(cls, opts = {}) {
   let stats = null, race = null, target = cls;
   for (let t = 0; t < tries && !stats; t++) {
     race = pickRace(cls);
-    stats = allocate(race, cls, rollBonus());
+    stats = allocate(race, cls, rollBonus(), alignFor(cls, align));
   }
-  if (!stats && fallback) { target = fallback; race = pickRace(fallback); stats = allocate(race, fallback, 30) || { ...RACES[race].base }; }
-  if (!stats) { stats = allocate(race, cls, 40) || { ...RACES[race].base }; }
+  // 目指した職業に届かなければ代わりの職業。ボーナスは普通に振る（以前は30点固定で、忍者に届かない悪の構成の戦士が別格に強くなっていた）
+  if (!stats && fallback) {
+    target = fallback;
+    for (let t = 0; t < tries && !stats; t++) { race = pickRace(fallback); stats = allocate(race, fallback, rollBonus(), alignFor(fallback, align)); }
+    stats ||= { ...RACES[race].base };
+  }
+  if (!stats) { stats = allocate(race, cls, 40, alignFor(cls, align)) || { ...RACES[race].base }; }
   const c = CLASSES[target];
-  let al = align && c.align.includes(align) ? align : (c.align.includes('G') ? 'G' : c.align[0]);
+  let al = alignFor(target, align);
   const ch = {
     id: nextId++, name: randomName(used), race, cls: target, align: al,
     level: 1, exp: 0, stats, age: RACES[race].age + R.int(4), weeks: 0,
@@ -200,7 +223,8 @@ export function canCast(c, sp) {
   return canAct(c) && c.mp[sp.school][sp.lv - 1] > 0 && knowsSpell(c, sp);
 }
 
-// 転職：レベル1・経験値0に戻り、能力値は種族の基本値に戻る。
+// 転職：レベル1・経験値0に戻り、能力値は種族の基本値まで戻る。ただし転職先の条件値までは残る
+// （転職できた能力は失わない。条件を超えていた分だけ失う）。
 // 最大HPと、それまでに覚えた呪文は残る（呪文の回数は、覚えている呪文の数だけ残る）
 export function changeClass(c, cls) {
   const from = c.cls;
@@ -208,7 +232,8 @@ export function changeClass(c, cls) {
   c.history = [...(c.history || []), from];
   c.cls = cls;
   c.level = 1; c.exp = 0;
-  c.stats = { ...RACES[c.race].base };
+  const base = RACES[c.race].base, req = CLASSES[cls].req || {};
+  c.stats = Object.fromEntries(STATS.map(k => [k, Math.max(base[k], Math.min(c.stats[k], req[k] || 0))]));
   c.status = 'ok'; c.hp = c.maxhp;
   const removed = [];
   for (const s of SLOTS) {
@@ -218,6 +243,17 @@ export function changeClass(c, cls) {
   restoreMP(c);
   return { from, removed };
 }
+// 性格の変化：友好的な魔物を襲うと善の仲間が悪に、立ち去ると悪の仲間が善に変わることがある（中立は変わらない）。
+// 今の職業に関係なく変わる（悪の君主や善の忍者もありうる）。職業の性格の条件は、作成時と転職時だけに効く
+export const ALIGN_SHIFT = { fight: { from: 'G', to: 'E', p: 0.2 }, leave: { from: 'E', to: 'G', p: 0.1 } };
+export function shiftAlignment(c, act) {
+  const s = ALIGN_SHIFT[act];
+  if (!s || c.align !== s.from || !isAlive(c)) return false;
+  if (!R.chance(s.p)) return false;
+  c.align = s.to;
+  return true;
+}
+
 export function hasMP(c) { return c.mp.mage.some(v => v > 0) || c.mp.priest.some(v => v > 0); }
 export function mpRatio(c) {
   const m = maxSlots(c); let a = 0, b = 0;

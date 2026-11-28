@@ -9,7 +9,7 @@ import {
 import { getFloor, findPath, W, H, DX, DY, DIR_NAMES, MAX_FLOOR, MAP_VERSION, THEMES, OPEN } from './dungeon.js';
 import { battle, makeEncounter, bossEncounter, damageChar, damageParty } from './combat.js';
 import {
-  shouldReturn, targetFloor, readyFor, campPlan, partyCondition, policy, partyLevel, recommendedLevel, classChangePlan,
+  shouldReturn, targetFloor, readyFor, campPlan, partyCondition, policy, partyLevel, recommendedLevel, classChangePlan, recruitAlign,
 } from './ai.js';
 
 export const SAVE_KEY = 'autoLabyrinth.save.v1';
@@ -179,7 +179,10 @@ export class Game {
     const fullBishop = () => this.party.some(p => p.cls === 'bishop' && knowsAll(p));
     for (const r of this.reserve.filter(c => c.status === 'ok').sort((a, b) => charValue(b) - charValue(a))) {
       if (r.cls === 'bishop' && !knowsAll(r) && fullBishop()) continue;
-      const weaker = this.party.filter(p => !retraining(p) && charValue(p) < charValue(r) - 1 && (p.cls === r.cls || roleOf(p) === roleOf(r))).sort((a, b) => (a.cls === r.cls ? -1 : 0) - (b.cls === r.cls ? -1 : 0) || charValue(a) - charValue(b))[0];
+      // ただ一人の罠を外せる仲間（盗賊・忍者）を、罠を外せない仲間と入れ替えない。盗賊と呪文職も入れ替えない
+      const trapper = (x) => x.cls === 'thief' || x.cls === 'ninja';
+      const lastTrapper = (p) => trapper(p) && !trapper(r) && this.party.filter(trapper).length === 1;
+      const weaker = this.party.filter(p => !retraining(p) && !lastTrapper(p) && charValue(p) < charValue(r) - 1 && (p.cls === r.cls || (roleOf(p) === roleOf(r) && (p.cls === 'thief') === (r.cls === 'thief')))).sort((a, b) => (a.cls === r.cls ? -1 : 0) - (b.cls === r.cls ? -1 : 0) || charValue(a) - charValue(b))[0];
       if (weaker) {
         this.party[this.party.indexOf(weaker)] = r;
         this.reserve.splice(this.reserve.indexOf(r), 1);
@@ -219,13 +222,20 @@ export class Game {
         const j = pool.findIndex(p => test(p, sl));
         if (j >= 0) { pool.splice(j, 1); filled[i] = true; }
       });
+      // 盗賊の枠は、罠を外せる仲間（盗賊・忍者）でしか埋まらない（魔術師や司教が余っていても盗賊を補充する）。
+      // 逆に、盗賊が呪文職の枠を埋めることもない
       take((p, [c]) => p.cls === c);
       take((p, [, fb]) => !!fb && p.cls === fb);
-      take((p, [c]) => roleOf(p) === roleOf({ cls: c }));
+      take((p, [c]) => c === 'thief' && p.cls === 'ninja');
+      take((p, [c]) => c !== 'thief' && p.cls !== 'thief' && roleOf(p) === roleOf({ cls: c }));
       const slot = comp.slots[filled.indexOf(false)] || comp.slots[this.party.length];
       const [cls, fb, al] = slot;
-      const ok = this.party.find(p => p.align === 'G') ? 'G' : this.party.find(p => p.align === 'E') ? 'E' : al;
-      const c = createCharacter(cls, { align: CLASSES[cls].align.includes(ok) ? ok : al, fallback: fb, used, tries: 60 });
+      // 新人の性格：善悪混合のパーティも組める。基本は今の仲間で多いほうの性格（同数なら構成の性格）に合わせ、
+      // 別の性格なら上位職に手が届く新人だけ、その性格にする（recruitAlign）
+      const nG = this.party.filter(p => p.align === 'G').length, nE = this.party.filter(p => p.align === 'E').length;
+      const pref = nG > nE ? 'G' : nE > nG ? 'E' : al;
+      const c = createCharacter(cls, { align: CLASSES[cls].align.includes(pref) ? pref : al, fallback: fb, used, tries: 60 });
+      c.align = recruitAlign(c, pref);
       used.add(c.name);
       // 新人は支度金を持ってくる
       this.gold += R.range(100, 200);
@@ -307,7 +317,7 @@ export class Game {
     const lv = c.level;
     const { from, removed } = changeClass(c, cls);
     this.log(`訓練場で、${c.name}（Lv${lv}）が${CLASSES[from].name}から${CLASSES[cls].name}に転職した！`, 'good');
-    this.log(`レベル1に戻り、能力値は種族の基本値に戻った。最大HP${c.maxhp}と覚えた呪文はそのまま。`);
+    this.log(`レベル1に戻り、能力値は種族の基本値まで戻った（転職先の条件の値までは残った）。最大HP${c.maxhp}と覚えた呪文はそのまま。`);
     for (const e of removed) this.bag.push(e);
     if (removed.length) this.log(`${removed.map(e => itemName(e)).join('、')}は装備できなくなり、袋にしまった。`);
     yield 2;

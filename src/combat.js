@@ -1,13 +1,16 @@
 // 戦闘処理（ジェネレーター。yield ごとに1メッセージ分の時間が進む）
 import { R, diceAvg } from './rng.js';
 import { MONSTERS, monstersForFloor } from './monsters.js';
-import { SPELLS, SPELL_BY_ID, CLASSES } from './data.js';
+import { SPELLS, SPELL_BY_ID, CLASSES, ALIGN_NAMES } from './data.js';
 import { ITEMS } from './items.js';
 import {
   isAlive, canAct, charAC, hitBonus, numAttacks, weaponDice, strBonus, agiBonus,
-  saveChance, drainLevel, maxSlots,
+  saveChance, drainLevel, maxSlots, shiftAlignment,
 } from './character.js';
-import { chooseActions } from './ai.js';
+import { chooseActions, friendlyChoice } from './ai.js';
+
+// 友好的なことがある魔物の種別（話の通じる相手）
+const FRIENDLY_TYPES = ['human', 'humanoid', 'caster'];
 
 export function makeEncounter(floor, opts = {}) {
   const pool = monstersForFloor(floor);
@@ -60,9 +63,17 @@ export function* battle(game, groups, opts = {}) {
 
   // 友好的な相手
   const g0 = groups[0].mon;
-  if (!opts.boss && !opts.lair && groups.length === 1 && g0.type === 'human' && R.chance(0.12)) {
-    game.log(`${g0.name}たちは友好的なようだ。パーティは立ち去った。`);
-    B.result = 'fled'; game.battle = null; yield 1; return B;
+  // 襲うか立ち去るかはAIが決め、その選択で仲間の性格が変わることがある
+  if (!opts.boss && !opts.lair && groups.length === 1 && FRIENDLY_TYPES.includes(g0.type) && R.chance(0.12)) {
+    game.log(`${g0.name}たちは友好的なようだ。`);
+    yield 1;
+    const act = friendlyChoice(game, groups[0]);
+    game.log(act === 'fight' ? 'パーティは襲いかかった！' : 'パーティは立ち去った。');
+    yield 1;
+    for (const c of party) {
+      if (shiftAlignment(c, act)) { game.log(`${c.name}の性格が${ALIGN_NAMES[act === 'fight' ? 'G' : 'E']}から${ALIGN_NAMES[c.align]}に変わった。`, 'sys'); yield 1; }
+    }
+    if (act === 'leave') { B.result = 'fled'; game.battle = null; return B; }
   }
 
   // 不意打ち判定
